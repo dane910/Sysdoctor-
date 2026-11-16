@@ -16,16 +16,10 @@ import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Build
-import androidx.compose.material.icons.filled.CleaningServices
 import androidx.compose.material.icons.filled.DarkMode
 import androidx.compose.material.icons.filled.LightMode
-import androidx.compose.material.icons.filled.Science
-import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.Speed
 import androidx.compose.material.icons.outlined.Build
-import androidx.compose.material.icons.outlined.CleaningServices
-import androidx.compose.material.icons.outlined.Science
-import androidx.compose.material.icons.outlined.Security
 import androidx.compose.material.icons.outlined.Speed
 import androidx.compose.material3.CenterAlignedTopAppBar
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -42,6 +36,9 @@ import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -57,10 +54,8 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import com.example.ai.configureAppCheck
+import com.example.model.ToolkitCategory
 import com.example.ui.components.TtsVoicePlayerBar
-import com.example.ui.screens.AuditAndSystemScreen
-import com.example.ui.screens.CleanerScreen
-import com.example.ui.screens.LabExplorerScreen
 import com.example.ui.screens.PulseOverviewScreen
 import com.example.ui.screens.ToolkitScreen
 import com.example.ui.theme.SysPulseTheme
@@ -72,18 +67,11 @@ sealed class SysPulseDestination(
     val selectedIcon: ImageVector,
     val unselectedIcon: ImageVector
 ) {
-    data object Pulse : SysPulseDestination(
+    data object Dashboard : SysPulseDestination(
         route = "pulse",
         labelResId = R.string.nav_pulse,
         selectedIcon = Icons.Filled.Speed,
         unselectedIcon = Icons.Outlined.Speed
-    )
-
-    data object Cleaner : SysPulseDestination(
-        route = "cleaner",
-        labelResId = R.string.nav_cleaner,
-        selectedIcon = Icons.Filled.CleaningServices,
-        unselectedIcon = Icons.Outlined.CleaningServices
     )
 
     data object Toolkit : SysPulseDestination(
@@ -92,28 +80,11 @@ sealed class SysPulseDestination(
         selectedIcon = Icons.Filled.Build,
         unselectedIcon = Icons.Outlined.Build
     )
-
-    data object Audit : SysPulseDestination(
-        route = "audit",
-        labelResId = R.string.nav_audit,
-        selectedIcon = Icons.Filled.Security,
-        unselectedIcon = Icons.Outlined.Security
-    )
-
-    data object Lab : SysPulseDestination(
-        route = "lab",
-        labelResId = R.string.nav_lab,
-        selectedIcon = Icons.Filled.Science,
-        unselectedIcon = Icons.Outlined.Science
-    )
 }
 
 private val navDestinations = listOf(
-    SysPulseDestination.Pulse,
-    SysPulseDestination.Cleaner,
-    SysPulseDestination.Toolkit,
-    SysPulseDestination.Audit,
-    SysPulseDestination.Lab
+    SysPulseDestination.Dashboard,
+    SysPulseDestination.Toolkit
 )
 
 class MainActivity : ComponentActivity() {
@@ -144,6 +115,7 @@ fun SysPulseAppShell(
     val navController = rememberNavController()
     val backStackEntry by navController.currentBackStackEntryAsState()
     val currentDestination = backStackEntry?.destination
+    var selectedToolkitCategory by rememberSaveable { mutableStateOf<ToolkitCategory?>(null) }
 
     val storage by viewModel.storageSummary.collectAsStateWithLifecycle()
     val wifi by viewModel.wifiAudit.collectAsStateWithLifecycle()
@@ -153,7 +125,6 @@ fun SysPulseAppShell(
     val auditBanner by viewModel.auditBanner.collectAsStateWithLifecycle()
     val cleanupFeedback by viewModel.cleanupFeedback.collectAsStateWithLifecycle()
     val ttsState by viewModel.ttsState.collectAsStateWithLifecycle()
-    val advisorState by viewModel.advisorState.collectAsStateWithLifecycle()
     val batteryTrend7Days by viewModel.batteryTrend7Days.collectAsStateWithLifecycle()
     val selectedBatteryMetric by viewModel.selectedBatteryMetric.collectAsStateWithLifecycle()
     val cleanerScanResult by viewModel.cleanerScanResult.collectAsStateWithLifecycle()
@@ -173,7 +144,23 @@ fun SysPulseAppShell(
     val toolkitFeedback by viewModel.toolkitFeedback.collectAsStateWithLifecycle()
 
     val navigateTo: (SysPulseDestination) -> Unit = { dest ->
+        if (dest == SysPulseDestination.Toolkit &&
+            currentDestination?.hierarchy?.any { it.route == SysPulseDestination.Toolkit.route } == true
+        ) {
+            selectedToolkitCategory = null
+        }
         navController.navigate(dest.route) {
+            popUpTo(navController.graph.findStartDestination().id) {
+                saveState = true
+            }
+            launchSingleTop = true
+            restoreState = true
+        }
+    }
+
+    val openToolkitCategory: (ToolkitCategory) -> Unit = { category ->
+        selectedToolkitCategory = category
+        navController.navigate(SysPulseDestination.Toolkit.route) {
             popUpTo(navController.graph.findStartDestination().id) {
                 saveState = true
             }
@@ -288,14 +275,14 @@ fun SysPulseAppShell(
                     Box(
                         modifier = Modifier
                             .weight(1f)
-                            .widthIn(max = 820.dp)
+                            .widthIn(max = 880.dp)
                             .fillMaxWidth()
                     ) {
                         NavHost(
                             navController = navController,
-                            startDestination = SysPulseDestination.Pulse.route
+                            startDestination = SysPulseDestination.Dashboard.route
                         ) {
-                            composable(SysPulseDestination.Pulse.route) {
+                            composable(SysPulseDestination.Dashboard.route) {
                                 PulseOverviewScreen(
                                     storage = storage,
                                     wifi = wifi,
@@ -307,37 +294,16 @@ fun SysPulseAppShell(
                                     auditBanner = auditBanner,
                                     onDismissAuditBanner = viewModel::dismissAuditBanner,
                                     onRefreshAll = viewModel::runManualAudit,
-                                    onNavigateToCleaner = { navigateTo(SysPulseDestination.Cleaner) },
-                                    onNavigateToToolkit = { navigateTo(SysPulseDestination.Toolkit) },
-                                    onNavigateToAudit = { navigateTo(SysPulseDestination.Audit) },
-                                    onNavigateToLab = { navigateTo(SysPulseDestination.Lab) }
-                                )
-                            }
-                            composable(SysPulseDestination.Cleaner.route) {
-                                CleanerScreen(
-                                    storage = storage,
-                                    duplicateState = duplicateState,
-                                    cleanupFeedback = cleanupFeedback,
-                                    cleanerScanResult = cleanerScanResult,
-                                    isScanningCleaner = isScanningCleaner,
-                                    cleanupReport = cleanupReport,
-                                    quarantineBeforeDelete = quarantineBeforeDelete,
-                                    onToggleCleanerCategory = viewModel::toggleCleanerCategory,
-                                    onToggleQuarantineBeforeDelete = viewModel::toggleQuarantineBeforeDelete,
-                                    onRescanCleaner = viewModel::runCleanerDeepScan,
-                                    onExecuteAdvancedClean = viewModel::executeAdvancedClean,
-                                    onDismissCleanupReport = viewModel::dismissCleanupReport,
-                                    onDismissFeedback = viewModel::dismissCleanupFeedback,
-                                    onClearAppCache = viewModel::clearAppCache,
-                                    onFolderPicked = viewModel::startDuplicateScan,
-                                    onToggleDuplicate = viewModel::toggleDuplicateSelection,
-                                    onDeleteSelectedDuplicates = viewModel::deleteSelectedDuplicates,
-                                    onResetDuplicateScan = viewModel::resetDuplicateScan,
-                                    onSpeakCleanupSummary = viewModel::speakCleanupSummary
+                                    onOpenToolkitCategory = openToolkitCategory
                                 )
                             }
                             composable(SysPulseDestination.Toolkit.route) {
                                 ToolkitScreen(
+                                    selectedCategory = selectedToolkitCategory,
+                                    onSelectCategory = { selectedToolkitCategory = it },
+                                    storage = storage,
+                                    wifi = wifi,
+                                    systemInfo = systemInfo,
                                     batteryHardware = batteryHardware,
                                     displayMetrics = displayMetrics,
                                     sensors = sensors,
@@ -346,6 +312,12 @@ fun SysPulseAppShell(
                                     storageVolumes = storageVolumes,
                                     recoveryScanState = recoveryScanState,
                                     quarantineFiles = quarantineFiles,
+                                    duplicateState = duplicateState,
+                                    cleanupFeedback = cleanupFeedback,
+                                    cleanerScanResult = cleanerScanResult,
+                                    isScanningCleaner = isScanningCleaner,
+                                    cleanupReport = cleanupReport,
+                                    quarantineBeforeDelete = quarantineBeforeDelete,
                                     toolkitFeedback = toolkitFeedback,
                                     onRunBatteryTest = viewModel::runBatteryDiagnosticTest,
                                     onUpdateDisplayTestStatus = viewModel::updateDisplayTestStatus,
@@ -356,30 +328,25 @@ fun SysPulseAppShell(
                                     onResetRecoveryScan = viewModel::resetRecoveryScan,
                                     onRestoreQuarantinedFile = viewModel::restoreQuarantinedFile,
                                     onPurgeQuarantinedFile = viewModel::purgeQuarantinedFile,
+                                    onToggleCleanerCategory = viewModel::toggleCleanerCategory,
+                                    onToggleQuarantineBeforeDelete = viewModel::toggleQuarantineBeforeDelete,
+                                    onRescanCleaner = viewModel::runCleanerDeepScan,
+                                    onExecuteAdvancedClean = viewModel::executeAdvancedClean,
+                                    onDismissCleanupReport = viewModel::dismissCleanupReport,
+                                    onDismissCleanupFeedback = viewModel::dismissCleanupFeedback,
+                                    onClearAppCache = viewModel::clearAppCache,
+                                    onFolderPickedForDuplicates = viewModel::startDuplicateScan,
+                                    onToggleDuplicate = viewModel::toggleDuplicateSelection,
+                                    onDeleteSelectedDuplicates = viewModel::deleteSelectedDuplicates,
+                                    onResetDuplicateScan = viewModel::resetDuplicateScan,
+                                    onSpeakCleanupSummary = viewModel::speakCleanupSummary,
+                                    onRefreshNetwork = viewModel::refreshWifiAuditOnly,
                                     onRefreshToolkit = viewModel::refreshToolkitData,
                                     onDismissFeedback = viewModel::dismissToolkitFeedback,
                                     bootableUsbCapability = bootableUsbCapability,
                                     bootImageInspectionState = bootImageInspectionState,
                                     onInspectBootImage = viewModel::inspectBootImage,
                                     onResetBootImageInspection = viewModel::resetBootImageInspection
-                                )
-                            }
-                            composable(SysPulseDestination.Audit.route) {
-                                AuditAndSystemScreen(
-                                    wifi = wifi,
-                                    systemInfo = systemInfo,
-                                    onRefreshNetwork = viewModel::refreshWifiAuditOnly,
-                                    onRefreshAll = viewModel::refreshAllDiagnostics
-                                )
-                            }
-                            composable(SysPulseDestination.Lab.route) {
-                                LabExplorerScreen(
-                                    topics = viewModel.architectureTopics,
-                                    advisorState = advisorState,
-                                    onSpeakTopic = viewModel::speakArchitectureTopic,
-                                    onAskAdvisor = viewModel::askAdvisor,
-                                    onClearAdvisor = viewModel::clearAdvisor,
-                                    onSpeakCustomText = viewModel::speakCustomText
                                 )
                             }
                         }

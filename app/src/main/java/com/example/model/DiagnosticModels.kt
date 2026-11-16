@@ -7,6 +7,32 @@ enum class SeverityLevel {
     ALERT
 }
 
+enum class ToolkitCategory(
+    val title: String,
+    val subtitle: String
+) {
+    DIAGNOSTICS(
+        title = "Hardware Diagnostics",
+        subtitle = "Battery health test, display pixel/touch check & live sensors"
+    ),
+    USB_TOOLS(
+        title = "USB Tools & Bootable OTG",
+        subtitle = "Attached USB OTG devices, bootable USB probe & .ISO/.IMG inspector"
+    ),
+    CLEANER(
+        title = "Storage Cleaner & Duplicates",
+        subtitle = "System/app cache, old logs, residual files & SHA-256 duplicate finder"
+    ),
+    NETWORK_AUDIT(
+        title = "Network & System Audit",
+        subtitle = "Wi-Fi WPA3/DNS/VPN posture, OS integrity & storage partitions"
+    ),
+    RECOVERY(
+        title = "File Recovery & Quarantine",
+        subtitle = "SAF .trashed / header signature scanner & quarantine vault"
+    )
+}
+
 data class StorageSummary(
     val totalBytes: Long = 0L,
     val availableBytes: Long = 0L,

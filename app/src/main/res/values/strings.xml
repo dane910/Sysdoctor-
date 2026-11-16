@@ -1,10 +1,7 @@
 <resources>
     <string name="app_name">SysDoctor</string>
     <string name="nav_pulse">Dashboard</string>
-    <string name="nav_cleaner">Cleaner</string>
     <string name="nav_toolkit">Toolkit</string>
-    <string name="nav_audit">Audit</string>
-    <string name="nav_lab">Lab</string>
     <string name="hero_subtitle">Device Telemetry &amp; Security</string>
     <string name="action_run_full_audit">Run Diagnostics</string>
     <string name="action_voice_briefing">Voice Briefing</string>
@@ -12,5 +9,4 @@
     <string name="action_scan_duplicates">Pick Folder to Scan</string>
     <string name="action_delete_duplicates">Delete Selected</string>
     <string name="action_unlock_wifi_ssid">Unlock Wi-Fi SSID</string>
-    <string name="action_ask_advisor">Ask Security Advisor</string>
 </resources>

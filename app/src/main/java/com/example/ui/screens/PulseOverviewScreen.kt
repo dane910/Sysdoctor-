@@ -1,6 +1,11 @@
 package com.example.ui.screens
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -20,13 +25,14 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.Build
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.CleaningServices
+import androidx.compose.material.icons.filled.ExpandLess
+import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.Refresh
-import androidx.compose.material.icons.filled.Science
 import androidx.compose.material.icons.filled.Security
+import androidx.compose.material.icons.filled.Usb
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -39,6 +45,10 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -49,12 +59,14 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.example.R
 import com.example.model.BatteryTrendMetric
 import com.example.model.BatteryTrendPoint
 import com.example.model.StorageSummary
 import com.example.model.SystemIntegrityInfo
+import com.example.model.ToolkitCategory
 import com.example.model.WifiSecurityAudit
 import com.example.ui.components.DiagnosticArcGauge
 
@@ -70,10 +82,7 @@ fun PulseOverviewScreen(
     auditBanner: String? = null,
     onDismissAuditBanner: () -> Unit = {},
     onRefreshAll: () -> Unit,
-    onNavigateToCleaner: () -> Unit,
-    onNavigateToToolkit: () -> Unit = {},
-    onNavigateToAudit: () -> Unit,
-    onNavigateToLab: () -> Unit,
+    onOpenToolkitCategory: (ToolkitCategory) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val storageFreeRatio = 1f - storage.usedFraction
@@ -83,13 +92,14 @@ fun PulseOverviewScreen(
         healthScore >= 55 -> MaterialTheme.colorScheme.tertiary
         else -> MaterialTheme.colorScheme.error
     }
+    var quickAccessExpanded by rememberSaveable { mutableStateOf(true) }
 
     LazyColumn(
         modifier = modifier
             .fillMaxSize()
             .testTag("sysdoctor_entry_dashboard"),
         contentPadding = PaddingValues(16.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp)
+        verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
         // SysDoctor Hero Telemetry Card
         item {
@@ -131,7 +141,7 @@ fun PulseOverviewScreen(
                         ) {
                             Column(modifier = Modifier.weight(1f)) {
                                 Text(
-                                    text = "SYSDOCTOR DIAGNOSTICS",
+                                    text = "SYSDOCTOR DASHBOARD",
                                     style = MaterialTheme.typography.labelMedium,
                                     color = MaterialTheme.colorScheme.primary
                                 )
@@ -182,11 +192,11 @@ fun PulseOverviewScreen(
                                 score = healthScore,
                                 label = "INDEX",
                                 accentColor = gaugeColor,
-                                size = 104.dp
+                                size = 100.dp
                             )
                         }
 
-                        Spacer(modifier = Modifier.height(16.dp))
+                        Spacer(modifier = Modifier.height(14.dp))
                         Button(
                             onClick = onRefreshAll,
                             enabled = !isRefreshing,
@@ -213,7 +223,7 @@ fun PulseOverviewScreen(
                                 )
                             }
                             Spacer(modifier = Modifier.width(6.dp))
-                            Text(if (isRefreshing) "Scanning…" else "Run Audit")
+                            Text(if (isRefreshing) "Scanning system files…" else "Scan")
                         }
                     }
                 }
@@ -252,7 +262,7 @@ fun PulseOverviewScreen(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.End
                         ) {
-                            TextButton(onClick = onNavigateToAudit) {
+                            TextButton(onClick = { onOpenToolkitCategory(ToolkitCategory.NETWORK_AUDIT) }) {
                                 Text("Full Audit")
                             }
                             TextButton(onClick = onDismissAuditBanner) {
@@ -264,7 +274,7 @@ fun PulseOverviewScreen(
             }
         }
 
-        // Summarized Device Diagnostic Dashboard (Storage Status, Battery Health, 7-Day Trend, CPU, RAM, Network)
+        // Collapsible Telemetry & Collapsible Graphs
         item {
             DiagnosticsDashboard(
                 systemInfo = systemInfo,
@@ -275,84 +285,128 @@ fun PulseOverviewScreen(
                 onSelectBatteryMetric = onSelectBatteryMetric,
                 isRefreshing = isRefreshing,
                 onRefresh = onRefreshAll,
-                onOpenStorage = onNavigateToCleaner,
-                onOpenAudit = onNavigateToAudit
+                onOpenStorage = { onOpenToolkitCategory(ToolkitCategory.CLEANER) },
+                onOpenBattery = { onOpenToolkitCategory(ToolkitCategory.DIAGNOSTICS) },
+                onOpenAudit = { onOpenToolkitCategory(ToolkitCategory.NETWORK_AUDIT) }
             )
         }
 
-        // Quick Action Suite
+        // Collapsible Quick Toolkit Shortcuts
         item {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                Text(
-                    text = "TOOLKIT MODULES",
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-                ToolkitActionRow(
-                    title = "Advanced Cleaner & Duplicate Finder",
-                    description = "Deep-clean system/app cache, old log traces, residual app data & SHA-256 duplicates.",
-                    icon = Icons.Filled.CleaningServices,
-                    accent = MaterialTheme.colorScheme.primary,
-                    tag = "quick_cleaner_card",
-                    onClick = onNavigateToCleaner
-                )
-                ToolkitActionRow(
-                    title = "Hardware Diagnostics, Recovery & Partitions",
-                    description = "Test battery, display & live sensors, recover soft-deleted files, and inspect storage volumes.",
-                    icon = Icons.Filled.Build,
-                    accent = MaterialTheme.colorScheme.secondary,
-                    tag = "quick_toolkit_card",
-                    onClick = onNavigateToToolkit
-                )
-                ToolkitActionRow(
-                    title = "Wi-Fi Security, Partition & USB OTG Audit",
-                    description = "Inspect WPA3/DNS/VPN posture, read-only system mounts, and attached USB drives.",
-                    icon = Icons.Filled.Security,
-                    accent = MaterialTheme.colorScheme.secondary,
-                    tag = "quick_audit_card",
-                    onClick = onNavigateToAudit
-                )
-                ToolkitActionRow(
-                    title = "Recovery, Bootable USB & Sandbox Lab",
-                    description = "Explore feasibility of ConfigFS bootable USB, A/B recovery, rooting trade-offs & Gemini Advisor.",
-                    icon = Icons.Filled.Science,
-                    accent = MaterialTheme.colorScheme.tertiary,
-                    tag = "quick_lab_card",
-                    onClick = onNavigateToLab
-                )
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(12.dp))
+                        .clickable { quickAccessExpanded = !quickAccessExpanded }
+                        .minimumInteractiveComponentSize()
+                        .padding(horizontal = 4.dp, vertical = 2.dp)
+                        .testTag("dashboard_quick_toolkit_toggle"),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = "QUICK TOOLKIT",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                        Text(
+                            text = if (quickAccessExpanded) "Direct Category Launch" else "Diagnostics, USB Tools, Cleaner & Audit",
+                            style = if (quickAccessExpanded) MaterialTheme.typography.titleMedium else MaterialTheme.typography.bodyMedium,
+                            color = if (quickAccessExpanded) MaterialTheme.colorScheme.onBackground else MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    Icon(
+                        imageVector = if (quickAccessExpanded) Icons.Filled.ExpandLess else Icons.Filled.ExpandMore,
+                        contentDescription = if (quickAccessExpanded) "Collapse quick toolkit" else "Expand quick toolkit",
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+
+                AnimatedVisibility(
+                    visible = quickAccessExpanded,
+                    enter = expandVertically(animationSpec = spring()) + fadeIn(),
+                    exit = shrinkVertically(animationSpec = spring()) + fadeOut()
+                ) {
+                    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            QuickCategoryTile(
+                                title = "Diagnostics",
+                                subtitle = "Battery, display & sensors",
+                                icon = Icons.Filled.Build,
+                                accent = MaterialTheme.colorScheme.secondary,
+                                tag = "quick_diagnostics_card",
+                                onClick = { onOpenToolkitCategory(ToolkitCategory.DIAGNOSTICS) },
+                                modifier = Modifier.weight(1f)
+                            )
+                            QuickCategoryTile(
+                                title = "USB Tools",
+                                subtitle = "OTG host & boot images",
+                                icon = Icons.Filled.Usb,
+                                accent = MaterialTheme.colorScheme.primary,
+                                tag = "quick_usb_card",
+                                onClick = { onOpenToolkitCategory(ToolkitCategory.USB_TOOLS) },
+                                modifier = Modifier.weight(1f)
+                            )
+                        }
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            QuickCategoryTile(
+                                title = "Cleaner",
+                                subtitle = "Cache & SHA-256 dupes",
+                                icon = Icons.Filled.CleaningServices,
+                                accent = MaterialTheme.colorScheme.tertiary,
+                                tag = "quick_cleaner_card",
+                                onClick = { onOpenToolkitCategory(ToolkitCategory.CLEANER) },
+                                modifier = Modifier.weight(1f)
+                            )
+                            QuickCategoryTile(
+                                title = "System Audit",
+                                subtitle = "Wi-Fi, DNS & partitions",
+                                icon = Icons.Filled.Security,
+                                accent = MaterialTheme.colorScheme.secondary,
+                                tag = "quick_audit_card",
+                                onClick = { onOpenToolkitCategory(ToolkitCategory.NETWORK_AUDIT) },
+                                modifier = Modifier.weight(1f)
+                            )
+                        }
+                    }
+                }
             }
         }
     }
 }
 
 @Composable
-private fun ToolkitActionRow(
+private fun QuickCategoryTile(
     title: String,
-    description: String,
+    subtitle: String,
     icon: ImageVector,
     accent: Color,
     tag: String,
-    onClick: () -> Unit
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
 ) {
     Card(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
             .clickable(onClick = onClick)
             .testTag(tag),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.45f)),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.5f)),
         shape = MaterialTheme.shapes.medium
     ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(14.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
+        Column(modifier = Modifier.padding(14.dp)) {
             Box(
                 modifier = Modifier
-                    .size(42.dp)
-                    .clip(RoundedCornerShape(12.dp))
+                    .size(36.dp)
+                    .clip(RoundedCornerShape(10.dp))
                     .background(accent.copy(alpha = 0.16f)),
                 contentAlignment = Alignment.Center
             ) {
@@ -360,28 +414,23 @@ private fun ToolkitActionRow(
                     imageVector = icon,
                     contentDescription = title,
                     tint = accent,
-                    modifier = Modifier.size(22.dp)
+                    modifier = Modifier.size(20.dp)
                 )
             }
-            Spacer(modifier = Modifier.width(12.dp))
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = title,
-                    style = MaterialTheme.typography.titleMedium,
-                    color = MaterialTheme.colorScheme.onSurface
-                )
-                Spacer(modifier = Modifier.height(2.dp))
-                Text(
-                    text = description,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-            Spacer(modifier = Modifier.width(8.dp))
-            Icon(
-                imageVector = Icons.AutoMirrored.Filled.ArrowForward,
-                contentDescription = "Open module",
-                tint = MaterialTheme.colorScheme.onSurfaceVariant
+            Spacer(modifier = Modifier.height(10.dp))
+            Text(
+                text = title,
+                style = MaterialTheme.typography.titleMedium,
+                color = MaterialTheme.colorScheme.onSurface,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            Text(
+                text = subtitle,
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
             )
         }
     }

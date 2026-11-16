@@ -1,6 +1,10 @@
 package com.example
 
 import android.content.Context
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.junit4.createComposeRule
@@ -18,10 +22,10 @@ import com.example.model.BatteryHardwareSnapshot
 import com.example.model.BatteryTrendMetric
 import com.example.model.BootImageInspectionState
 import com.example.model.BootableUsbCapability
+import com.example.model.CleanerCandidateItem
 import com.example.model.CleanerCategoryScan
 import com.example.model.CleanerCategoryType
 import com.example.model.CleanerDeepScanResult
-import com.example.model.CleanerCandidateItem
 import com.example.model.CleanupCategoryReport
 import com.example.model.CleanupReport
 import com.example.model.DisplayMetricsSnapshot
@@ -31,8 +35,8 @@ import com.example.model.RecoveryScanState
 import com.example.model.StorageSummary
 import com.example.model.StorageVolumeDetail
 import com.example.model.SystemIntegrityInfo
+import com.example.model.ToolkitCategory
 import com.example.model.WifiSecurityAudit
-import com.example.ui.screens.CleanerScreen
 import com.example.ui.screens.PulseOverviewScreen
 import com.example.ui.screens.ToolkitScreen
 import com.example.ui.theme.SysPulseTheme
@@ -56,15 +60,6 @@ class ExampleRobolectricTest {
     val context = ApplicationProvider.getApplicationContext<Context>()
     val appName = context.getString(R.string.app_name)
     assertEquals("SysDoctor", appName)
-  }
-
-  @Test
-  fun `architecture guides cover expected security topics`() {
-    val ids = com.example.diagnostics.ArchitectureGuides.topics.map { it.id }
-    assertTrue(ids.contains("bootable_usb"))
-    assertTrue(ids.contains("partition_recovery"))
-    assertTrue(ids.contains("network_auditing"))
-    assertTrue(ids.contains("rooting_tradeoffs"))
   }
 
   @Test
@@ -104,7 +99,7 @@ class ExampleRobolectricTest {
   }
 
   @Test
-  fun `entry dashboard displays storage status battery health and 7 day trend`() {
+  fun `dashboard displays collapsible telemetry and collapsible graphs`() {
     val sampleStorage = StorageSummary(
       totalBytes = 128L * 1024 * 1024 * 1024,
       availableBytes = 64L * 1024 * 1024 * 1024,
@@ -164,10 +159,7 @@ class ExampleRobolectricTest {
           auditBanner = "Audit complete (01:40:00) • Storage 50% used",
           onDismissAuditBanner = {},
           onRefreshAll = {},
-          onNavigateToCleaner = {},
-          onNavigateToToolkit = {},
-          onNavigateToAudit = {},
-          onNavigateToLab = {}
+          onOpenToolkitCategory = {}
         )
       }
     }
@@ -193,20 +185,32 @@ class ExampleRobolectricTest {
     composeTestRule.onNodeWithText("86%").assertIsDisplayed()
     composeTestRule.onAllNodesWithText("Good")[0].assertIsDisplayed()
 
+    // Collapse telemetry section and verify telemetry cards hide
+    composeTestRule.onNodeWithTag("dashboard_telemetry_toggle")
+      .performScrollTo()
+      .performClick()
+    composeTestRule.onNodeWithTag("dashboard_storage_card").assertDoesNotExist()
+
+    // Graphs section: verify trend chart and resource graph toggle open cleanly
     composeTestRule.onNodeWithTag("battery_trend_chart_card")
       .performScrollTo()
       .assertIsDisplayed()
-    composeTestRule.onNodeWithText("7-Day Battery Trend").assertIsDisplayed()
     composeTestRule.onNodeWithTag("vico_battery_trend_chart").assertDoesNotExist()
-
     composeTestRule.onNodeWithTag("battery_trend_toggle").performClick()
     composeTestRule.onNodeWithTag("vico_battery_trend_chart")
+      .performScrollTo()
+      .assertIsDisplayed()
+
+    composeTestRule.onNodeWithTag("resource_graph_toggle")
+      .performScrollTo()
+      .performClick()
+    composeTestRule.onNodeWithTag("resource_graph_body")
       .performScrollTo()
       .assertIsDisplayed()
   }
 
   @Test
-  fun `cleaner screen renders advanced system cleaner and cleanup report`() {
+  fun `toolkit category list expands with scan and repair actions`() {
     val scanResult = CleanerDeepScanResult(
       scannedFolderName = null,
       categories = listOf(
@@ -243,36 +247,13 @@ class ExampleRobolectricTest {
 
     composeTestRule.setContent {
       SysPulseTheme(darkTheme = true) {
-        CleanerScreen(
-          storage = StorageSummary(totalBytes = 10000L, availableBytes = 5000L, usedBytes = 5000L),
-          duplicateState = DuplicateScanState.Idle,
-          cleanupFeedback = null,
-          cleanerScanResult = scanResult,
-          isScanningCleaner = false,
-          cleanupReport = report,
-          quarantineBeforeDelete = true,
-          onDismissFeedback = {},
-          onClearAppCache = {},
-          onFolderPicked = {},
-          onToggleDuplicate = { _, _ -> },
-          onDeleteSelectedDuplicates = {},
-          onResetDuplicateScan = {},
-          onSpeakCleanupSummary = {}
-        )
-      }
-    }
-
-    composeTestRule.onNodeWithTag("cleanup_report_card").assertIsDisplayed()
-    composeTestRule.onNodeWithTag("advanced_cleaner_card")
-      .performScrollTo()
-      .assertIsDisplayed()
-  }
-
-  @Test
-  fun `toolkit screen switches between hardware recovery and partitions`() {
-    composeTestRule.setContent {
-      SysPulseTheme(darkTheme = true) {
+        var selectedCategory by remember { mutableStateOf<ToolkitCategory?>(null) }
         ToolkitScreen(
+          selectedCategory = selectedCategory,
+          onSelectCategory = { selectedCategory = it },
+          storage = StorageSummary(totalBytes = 10000L, availableBytes = 5000L, usedBytes = 5000L),
+          wifi = WifiSecurityAudit(isConnected = true, transportLabel = "Wi-Fi", securityProtocol = "WPA3-SAE", auditScore = 92),
+          systemInfo = SystemIntegrityInfo(manufacturer = "Google", model = "Pixel 9"),
           batteryHardware = BatteryHardwareSnapshot(
             levelPct = 90,
             healthLabel = "Good",
@@ -300,6 +281,12 @@ class ExampleRobolectricTest {
           ),
           recoveryScanState = RecoveryScanState.Idle,
           quarantineFiles = emptyList(),
+          duplicateState = DuplicateScanState.Idle,
+          cleanupFeedback = null,
+          cleanerScanResult = scanResult,
+          isScanningCleaner = false,
+          cleanupReport = report,
+          quarantineBeforeDelete = true,
           toolkitFeedback = null,
           onRunBatteryTest = {},
           onUpdateDisplayTestStatus = {},
@@ -310,35 +297,45 @@ class ExampleRobolectricTest {
           onResetRecoveryScan = {},
           onRestoreQuarantinedFile = { _, _ -> },
           onPurgeQuarantinedFile = {},
+          onToggleCleanerCategory = {},
+          onToggleQuarantineBeforeDelete = {},
+          onRescanCleaner = {},
+          onExecuteAdvancedClean = {},
+          onDismissCleanupReport = {},
+          onDismissCleanupFeedback = {},
+          onClearAppCache = {},
+          onFolderPickedForDuplicates = {},
+          onToggleDuplicate = { _, _ -> },
+          onDeleteSelectedDuplicates = {},
+          onResetDuplicateScan = {},
+          onSpeakCleanupSummary = {},
+          onRefreshNetwork = {},
           onRefreshToolkit = {},
-          onDismissFeedback = {}
+          onDismissFeedback = {},
+          bootableUsbCapability = BootableUsbCapability(hasUsbHostFeature = true),
+          bootImageInspectionState = BootImageInspectionState.Idle
         )
       }
     }
 
+    // Category list visible
+    composeTestRule.onNodeWithTag("toolkit_category_list").assertIsDisplayed()
+    // Tap diagnostics category to expand action buttons
+    composeTestRule.onNodeWithTag("toolkit_category_diagnostics").performClick()
+    composeTestRule.onNodeWithTag("expand_action_scan_diagnostics").assertIsDisplayed()
+    composeTestRule.onNodeWithTag("expand_action_repair_diagnostics").assertIsDisplayed()
+    composeTestRule.onNodeWithTag("expand_action_open_diagnostics").performClick()
     composeTestRule.onNodeWithTag("toolkit_battery_card").assertIsDisplayed()
-    composeTestRule.onNodeWithTag("toolkit_tab_recovery").performClick()
-    composeTestRule.onNodeWithTag("toolkit_recovery_card").assertIsDisplayed()
-    composeTestRule.onNodeWithTag("toolkit_tab_partitions").performClick()
-    composeTestRule.onNodeWithTag("partition_volume_part_data").assertIsDisplayed()
-    composeTestRule.onNodeWithTag("toolkit_tab_bootable_usb").performScrollTo().performClick()
-    composeTestRule.onNodeWithTag("toolkit_bootable_usb_card").assertIsDisplayed()
-    composeTestRule.onNodeWithTag("toolkit_screen")
-      .performScrollToNode(hasTestTag("boot_image_inspector_card"))
-    composeTestRule.onNodeWithTag("boot_image_inspector_card").assertIsDisplayed()
   }
 
   @Test
   fun `boot header parser detects hybrid ISO-9660 El Torito and MBR signatures`() {
     val bytes = ByteArray(36864)
-    // MBR 0x55 0xAA
     bytes[510] = 0x55.toByte()
     bytes[511] = 0xAA.toByte()
-    // ISO-9660 PVD at 32768
     bytes[32768] = 0x01.toByte()
     "CD001".toByteArray().copyInto(bytes, 32769)
     "UBUNTU_24_04_LTS".toByteArray().copyInto(bytes, 32808)
-    // El Torito Boot Record at 34816
     bytes[34816] = 0x00.toByte()
     "CD001".toByteArray().copyInto(bytes, 34817)
     "EL TORITO SPECIFICATION".toByteArray().copyInto(bytes, 34823)

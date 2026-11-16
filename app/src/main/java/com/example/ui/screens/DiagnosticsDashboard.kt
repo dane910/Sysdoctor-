@@ -1,5 +1,11 @@
 package com.example.ui.screens
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -20,6 +26,8 @@ import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.BatteryChargingFull
 import androidx.compose.material.icons.filled.BatteryStd
 import androidx.compose.material.icons.filled.DeveloperBoard
+import androidx.compose.material.icons.filled.ExpandLess
+import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.Memory
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Storage
@@ -35,6 +43,10 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -52,6 +64,7 @@ import com.example.model.StorageSummary
 import com.example.model.SystemIntegrityInfo
 import com.example.model.WifiSecurityAudit
 import com.example.ui.components.BatteryTrendChartCard
+import com.example.ui.components.ResourceUtilizationGraphCard
 import com.example.ui.components.SeverityBadge
 import com.example.ui.theme.JetBrainsMonoFontFamily
 
@@ -66,9 +79,13 @@ fun DiagnosticsDashboard(
     isRefreshing: Boolean = false,
     onRefresh: (() -> Unit)? = null,
     onOpenStorage: (() -> Unit)? = null,
+    onOpenBattery: (() -> Unit)? = null,
     onOpenAudit: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
+    var telemetryExpanded by rememberSaveable { mutableStateOf(true) }
+    var graphsExpanded by rememberSaveable { mutableStateOf(true) }
+
     val storageSeverity = when {
         storage.totalBytes <= 0L -> SeverityLevel.INFO
         storage.usedFraction >= 0.90f -> SeverityLevel.ALERT
@@ -124,21 +141,34 @@ fun DiagnosticsDashboard(
             .testTag("diagnostics_dashboard"),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
+        // Collapsible Telemetry Header
         Row(
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(12.dp))
+                .clickable { telemetryExpanded = !telemetryExpanded }
+                .minimumInteractiveComponentSize()
+                .padding(horizontal = 4.dp, vertical = 2.dp)
+                .testTag("dashboard_telemetry_toggle"),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
             Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    text = "SUMMARIZED DIAGNOSTICS",
+                    text = "SYSTEM TELEMETRY",
                     style = MaterialTheme.typography.labelMedium,
                     color = MaterialTheme.colorScheme.primary
                 )
                 Text(
-                    text = "Device Health Summary",
-                    style = MaterialTheme.typography.titleLarge,
-                    color = MaterialTheme.colorScheme.onBackground
+                    text = if (telemetryExpanded) {
+                        "Device Health Summary"
+                    } else {
+                        "Storage ${(storage.usedFraction * 100).toInt()}% • Battery ${systemInfo.batteryLevelPct}% • RAM ${(systemInfo.ramUsedFraction * 100).toInt()}%"
+                    },
+                    style = if (telemetryExpanded) MaterialTheme.typography.titleLarge else MaterialTheme.typography.bodyMedium,
+                    color = if (telemetryExpanded) MaterialTheme.colorScheme.onBackground else MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
                 )
             }
             if (onRefresh != null) {
@@ -156,128 +186,184 @@ fun DiagnosticsDashboard(
                     )
                 }
             }
+            Icon(
+                imageVector = if (telemetryExpanded) Icons.Filled.ExpandLess else Icons.Filled.ExpandMore,
+                contentDescription = if (telemetryExpanded) "Collapse telemetry" else "Expand telemetry",
+                tint = MaterialTheme.colorScheme.onSurfaceVariant
+            )
         }
 
-        BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
-            val isWide = maxWidth >= 560.dp
+        AnimatedVisibility(
+            visible = telemetryExpanded,
+            enter = expandVertically(animationSpec = spring()) + fadeIn(),
+            exit = shrinkVertically(animationSpec = spring()) + fadeOut()
+        ) {
+            BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
+                val isWide = maxWidth >= 560.dp
 
-            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                if (isWide) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(12.dp)
-                    ) {
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    if (isWide) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            StorageSummaryCard(
+                                storage = storage,
+                                severity = storageSeverity,
+                                statusLabel = storageStatusLabel,
+                                accentColor = storageAccent,
+                                onClick = onOpenStorage,
+                                modifier = Modifier.weight(1f)
+                            )
+                            BatteryHealthCard(
+                                systemInfo = systemInfo,
+                                severity = batterySeverity,
+                                accentColor = batteryAccent,
+                                onClick = onOpenBattery,
+                                modifier = Modifier.weight(1f)
+                            )
+                        }
+                    } else {
                         StorageSummaryCard(
                             storage = storage,
                             severity = storageSeverity,
                             statusLabel = storageStatusLabel,
                             accentColor = storageAccent,
-                            onClick = onOpenStorage,
-                            modifier = Modifier.weight(1f)
+                            onClick = onOpenStorage
                         )
                         BatteryHealthCard(
                             systemInfo = systemInfo,
                             severity = batterySeverity,
                             accentColor = batteryAccent,
-                            modifier = Modifier.weight(1f)
+                            onClick = onOpenBattery
                         )
                     }
-                } else {
-                    StorageSummaryCard(
-                        storage = storage,
-                        severity = storageSeverity,
-                        statusLabel = storageStatusLabel,
-                        accentColor = storageAccent,
-                        onClick = onOpenStorage
-                    )
-                    BatteryHealthCard(
-                        systemInfo = systemInfo,
-                        severity = batterySeverity,
-                        accentColor = batteryAccent
-                    )
-                }
 
-                // Secondary Compute & Network Telemetry
-                if (isWide && wifi != null) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(12.dp)
-                    ) {
-                        HealthMetricCard(
-                            title = "CPU Load",
-                            primaryValue = cpuPct?.let { "$it%" } ?: "N/A",
-                            progress = ((cpuPct ?: 0) / 100f).coerceIn(0f, 1f),
-                            statusLabel = "${systemInfo.cpuCores} Cores",
-                            detailLine = systemInfo.cpuMetricSource,
-                            icon = Icons.Filled.DeveloperBoard,
-                            severity = cpuSeverity,
-                            accentColor = MaterialTheme.colorScheme.primary,
-                            testTagName = "dashboard_cpu_card",
-                            modifier = Modifier.weight(1f)
-                        )
-                        HealthMetricCard(
-                            title = "Available RAM",
-                            primaryValue = formatBytes(systemInfo.availableRamBytes),
-                            progress = 1f - systemInfo.ramUsedFraction,
-                            statusLabel = if (systemInfo.isLowMemory) "Low Mem" else "${((1f - systemInfo.ramUsedFraction) * 100).toInt()}% Free",
-                            detailLine = "of ${formatBytes(systemInfo.totalRamBytes)} total",
-                            icon = Icons.Filled.Memory,
-                            severity = ramSeverity,
-                            accentColor = MaterialTheme.colorScheme.secondary,
-                            testTagName = "dashboard_ram_card",
-                            modifier = Modifier.weight(1f)
-                        )
-                        NetworkPostureCard(
-                            wifi = wifi,
-                            onClick = onOpenAudit,
-                            modifier = Modifier.weight(1f)
-                        )
-                    }
-                } else {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(10.dp)
-                    ) {
-                        HealthMetricCard(
-                            title = "CPU Load",
-                            primaryValue = cpuPct?.let { "$it%" } ?: "N/A",
-                            progress = ((cpuPct ?: 0) / 100f).coerceIn(0f, 1f),
-                            statusLabel = "${systemInfo.cpuCores} Cores",
-                            detailLine = systemInfo.cpuMetricSource,
-                            icon = Icons.Filled.DeveloperBoard,
-                            severity = cpuSeverity,
-                            accentColor = MaterialTheme.colorScheme.primary,
-                            testTagName = "dashboard_cpu_card",
-                            modifier = Modifier.weight(1f)
-                        )
-                        HealthMetricCard(
-                            title = "Available RAM",
-                            primaryValue = formatBytes(systemInfo.availableRamBytes),
-                            progress = 1f - systemInfo.ramUsedFraction,
-                            statusLabel = if (systemInfo.isLowMemory) "Low Mem" else "${((1f - systemInfo.ramUsedFraction) * 100).toInt()}% Free",
-                            detailLine = "of ${formatBytes(systemInfo.totalRamBytes)}",
-                            icon = Icons.Filled.Memory,
-                            severity = ramSeverity,
-                            accentColor = MaterialTheme.colorScheme.secondary,
-                            testTagName = "dashboard_ram_card",
-                            modifier = Modifier.weight(1f)
-                        )
-                    }
-                    if (wifi != null) {
-                        NetworkPostureCard(
-                            wifi = wifi,
-                            onClick = onOpenAudit
-                        )
+                    // Secondary Compute & Network Telemetry
+                    if (isWide && wifi != null) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            HealthMetricCard(
+                                title = "CPU Load",
+                                primaryValue = cpuPct?.let { "$it%" } ?: "N/A",
+                                progress = ((cpuPct ?: 0) / 100f).coerceIn(0f, 1f),
+                                statusLabel = "${systemInfo.cpuCores} Cores",
+                                detailLine = systemInfo.cpuMetricSource,
+                                icon = Icons.Filled.DeveloperBoard,
+                                severity = cpuSeverity,
+                                accentColor = MaterialTheme.colorScheme.primary,
+                                testTagName = "dashboard_cpu_card",
+                                modifier = Modifier.weight(1f)
+                            )
+                            HealthMetricCard(
+                                title = "Available RAM",
+                                primaryValue = formatBytes(systemInfo.availableRamBytes),
+                                progress = 1f - systemInfo.ramUsedFraction,
+                                statusLabel = if (systemInfo.isLowMemory) "Low Mem" else "${((1f - systemInfo.ramUsedFraction) * 100).toInt()}% Free",
+                                detailLine = "of ${formatBytes(systemInfo.totalRamBytes)} total",
+                                icon = Icons.Filled.Memory,
+                                severity = ramSeverity,
+                                accentColor = MaterialTheme.colorScheme.secondary,
+                                testTagName = "dashboard_ram_card",
+                                modifier = Modifier.weight(1f)
+                            )
+                            NetworkPostureCard(
+                                wifi = wifi,
+                                onClick = onOpenAudit,
+                                modifier = Modifier.weight(1f)
+                            )
+                        }
+                    } else {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            HealthMetricCard(
+                                title = "CPU Load",
+                                primaryValue = cpuPct?.let { "$it%" } ?: "N/A",
+                                progress = ((cpuPct ?: 0) / 100f).coerceIn(0f, 1f),
+                                statusLabel = "${systemInfo.cpuCores} Cores",
+                                detailLine = systemInfo.cpuMetricSource,
+                                icon = Icons.Filled.DeveloperBoard,
+                                severity = cpuSeverity,
+                                accentColor = MaterialTheme.colorScheme.primary,
+                                testTagName = "dashboard_cpu_card",
+                                modifier = Modifier.weight(1f)
+                            )
+                            HealthMetricCard(
+                                title = "Available RAM",
+                                primaryValue = formatBytes(systemInfo.availableRamBytes),
+                                progress = 1f - systemInfo.ramUsedFraction,
+                                statusLabel = if (systemInfo.isLowMemory) "Low Mem" else "${((1f - systemInfo.ramUsedFraction) * 100).toInt()}% Free",
+                                detailLine = "of ${formatBytes(systemInfo.totalRamBytes)}",
+                                icon = Icons.Filled.Memory,
+                                severity = ramSeverity,
+                                accentColor = MaterialTheme.colorScheme.secondary,
+                                testTagName = "dashboard_ram_card",
+                                modifier = Modifier.weight(1f)
+                            )
+                        }
+                        if (wifi != null) {
+                            NetworkPostureCard(
+                                wifi = wifi,
+                                onClick = onOpenAudit
+                            )
+                        }
                     }
                 }
             }
         }
 
-        BatteryTrendChartCard(
-            trendPoints = batteryTrend7Days,
-            selectedMetric = selectedBatteryMetric,
-            onSelectMetric = onSelectBatteryMetric
-        )
+        // Collapsible Graphs & Trends Header
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(12.dp))
+                .clickable { graphsExpanded = !graphsExpanded }
+                .minimumInteractiveComponentSize()
+                .padding(horizontal = 4.dp, vertical = 2.dp)
+                .testTag("dashboard_graphs_toggle"),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = "GRAPHS & TRENDS",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.primary
+                )
+                Text(
+                    text = if (graphsExpanded) "Telemetry Charts" else "Battery trend & resource graphs hidden",
+                    style = if (graphsExpanded) MaterialTheme.typography.titleMedium else MaterialTheme.typography.bodyMedium,
+                    color = if (graphsExpanded) MaterialTheme.colorScheme.onBackground else MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            Icon(
+                imageVector = if (graphsExpanded) Icons.Filled.ExpandLess else Icons.Filled.ExpandMore,
+                contentDescription = if (graphsExpanded) "Collapse graphs" else "Expand graphs",
+                tint = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+
+        AnimatedVisibility(
+            visible = graphsExpanded,
+            enter = expandVertically(animationSpec = spring()) + fadeIn(),
+            exit = shrinkVertically(animationSpec = spring()) + fadeOut()
+        ) {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                BatteryTrendChartCard(
+                    trendPoints = batteryTrend7Days,
+                    selectedMetric = selectedBatteryMetric,
+                    onSelectMetric = onSelectBatteryMetric
+                )
+                ResourceUtilizationGraphCard(
+                    storage = storage,
+                    systemInfo = systemInfo
+                )
+            }
+        }
     }
 }
 
@@ -398,12 +484,14 @@ private fun BatteryHealthCard(
     systemInfo: SystemIntegrityInfo,
     severity: SeverityLevel,
     accentColor: Color,
+    onClick: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     val healthText = systemInfo.batteryHealthLabel.ifBlank { "Normal" }
     Card(
         modifier = modifier
             .fillMaxWidth()
+            .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)
             .testTag("dashboard_battery_card"),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.55f)),

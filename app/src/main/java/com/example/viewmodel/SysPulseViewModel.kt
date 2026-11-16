@@ -163,7 +163,12 @@ class SysPulseViewModel(application: Application) : AndroidViewModel(application
     }
 
     fun runManualAudit() {
-        refreshAllDiagnostics(showBanner = true)
+        viewModelScope.launch {
+            _isRefreshing.value = true
+            _auditBanner.value = "Scanning system files, app volumes & cache directories..."
+            kotlinx.coroutines.delay(800)
+            refreshAllDiagnostics(showBanner = true)
+        }
     }
 
     fun dismissAuditBanner() {
@@ -206,7 +211,7 @@ class SysPulseViewModel(application: Application) : AndroidViewModel(application
                     val usedPct = (storage.usedFraction * 100).toInt()
                     val netSummary = if (wifi.isConnected) "Network ${wifi.auditScore}/100" else "Offline"
                     _auditBanner.value =
-                        "Audit complete ($timeLabel) • Storage $usedPct% used • Battery ${sys.batteryLevelPct}% (${sys.batteryHealthLabel}) • $netSummary"
+                        "System Scan complete ($timeLabel) • Storage $usedPct% used • Battery ${sys.batteryLevelPct}% • $netSummary"
                 }
             } finally {
                 _isRefreshing.value = false
