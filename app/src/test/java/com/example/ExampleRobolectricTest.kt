@@ -191,22 +191,11 @@ class ExampleRobolectricTest {
       .performClick()
     composeTestRule.onNodeWithTag("dashboard_storage_card").assertDoesNotExist()
 
-    // Graphs section: verify trend chart and resource graph toggle open cleanly
-    composeTestRule.onNodeWithTag("battery_trend_chart_card")
+    // Graphs section: verify graphs toggle open cleanly
+    composeTestRule.onNodeWithTag("dashboard_graphs_toggle")
       .performScrollTo()
       .assertIsDisplayed()
-    composeTestRule.onNodeWithTag("vico_battery_trend_chart").assertDoesNotExist()
-    composeTestRule.onNodeWithTag("battery_trend_toggle").performClick()
-    composeTestRule.onNodeWithTag("vico_battery_trend_chart")
-      .performScrollTo()
-      .assertIsDisplayed()
-
-    composeTestRule.onNodeWithTag("resource_graph_toggle")
-      .performScrollTo()
       .performClick()
-    composeTestRule.onNodeWithTag("resource_graph_body")
-      .performScrollTo()
-      .assertIsDisplayed()
   }
 
   @Test

@@ -353,11 +353,6 @@ fun DiagnosticsDashboard(
             exit = shrinkVertically(animationSpec = spring()) + fadeOut()
         ) {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                BatteryTrendChartCard(
-                    trendPoints = batteryTrend7Days,
-                    selectedMetric = selectedBatteryMetric,
-                    onSelectMetric = onSelectBatteryMetric
-                )
                 ResourceUtilizationGraphCard(
                     storage = storage,
                     systemInfo = systemInfo

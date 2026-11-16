@@ -149,20 +149,6 @@ fun LazyListScope.storageCleanerItems(
                         color = MaterialTheme.colorScheme.onSurface,
                         modifier = Modifier.weight(1f)
                     )
-                    OutlinedButton(
-                        onClick = onSpeakCleanupSummary,
-                        modifier = Modifier
-                            .minimumInteractiveComponentSize()
-                            .testTag("speak_cleanup_button")
-                    ) {
-                        Icon(
-                            imageVector = Icons.Filled.VolumeUp,
-                            contentDescription = "Speak cleanup report",
-                            modifier = Modifier.size(18.dp)
-                        )
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text("TTS")
-                    }
                 }
                 Spacer(modifier = Modifier.height(6.dp))
                 SeverityBadge(
