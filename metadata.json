@@ -1,0 +1,8 @@
+{
+  "name": "SysDoctor",
+  "description": "Device diagnostics, storage \u0026 duplicate cleaner, Wi-Fi security auditor, USB/recovery feasibility explorer, and Gemini TTS voice briefings.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
