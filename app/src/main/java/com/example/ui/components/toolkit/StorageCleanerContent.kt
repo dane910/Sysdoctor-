@@ -44,12 +44,20 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.example.diagnostics.formatBytes
+import com.example.model.BrowserEntry
 import com.example.model.CleanerCategoryType
 import com.example.model.CleanerDeepScanResult
 import com.example.model.CleanupReport
+import com.example.model.DeepFileScanState
+import com.example.model.DeepFindingCategory
+import com.example.model.DeepScanFinding
 import com.example.model.DuplicateGroup
 import com.example.model.DuplicateScanState
+import com.example.model.FileBrowserUiState
+import com.example.model.FileSortOption
+import com.example.model.MountedSafRoot
 import com.example.model.SeverityLevel
+import com.example.model.StorageRootKind
 import com.example.model.StorageSummary
 import com.example.ui.components.AdvancedCleanerCard
 import com.example.ui.components.CleanupReportCard
@@ -58,12 +66,31 @@ import com.example.ui.theme.JetBrainsMonoFontFamily
 
 fun LazyListScope.storageCleanerItems(
     storage: StorageSummary,
+    fileBrowserState: FileBrowserUiState,
+    deepScanState: DeepFileScanState,
     duplicateState: DuplicateScanState,
     cleanupFeedback: String?,
     cleanerScanResult: CleanerDeepScanResult?,
     isScanningCleaner: Boolean,
     cleanupReport: CleanupReport?,
     quarantineBeforeDelete: Boolean,
+    onSelectBrowserRoot: (StorageRootKind) -> Unit,
+    onSelectMountedSafRoot: (MountedSafRoot) -> Unit,
+    onPickBrowserSafFolder: () -> Unit,
+    onNavigateBreadcrumb: (Int) -> Unit,
+    onOpenBrowserFolder: (BrowserEntry) -> Unit,
+    onPreviewBrowserFile: (BrowserEntry) -> Unit,
+    onDeleteBrowserEntry: (BrowserEntry) -> Unit,
+    onChangeBrowserSort: (FileSortOption) -> Unit,
+    onRefreshBrowserDirectory: () -> Unit,
+    onStartAppDeepScan: () -> Unit,
+    onPickSafFolderForDeepScan: () -> Unit,
+    onSelectDeepScanFilter: (DeepFindingCategory) -> Unit,
+    onToggleDeepFindingSelection: (String) -> Unit,
+    onSelectAllFilteredDeepFindings: (Boolean) -> Unit,
+    onInspectDeepFinding: (DeepScanFinding) -> Unit,
+    onDeleteSelectedDeepFindings: () -> Unit,
+    onResetDeepScan: () -> Unit,
     onToggleCleanerCategory: (CleanerCategoryType) -> Unit,
     onToggleQuarantineBeforeDelete: () -> Unit,
     onRescanAppCleaner: () -> Unit,
@@ -109,26 +136,6 @@ fun LazyListScope.storageCleanerItems(
                 }
             }
         }
-    }
-
-    item(key = "cleaner_report") {
-        CleanupReportCard(
-            report = cleanupReport,
-            onDismiss = onDismissCleanupReport
-        )
-    }
-
-    item(key = "cleaner_advanced") {
-        AdvancedCleanerCard(
-            scanResult = cleanerScanResult,
-            isScanning = isScanningCleaner,
-            quarantineBeforeDelete = quarantineBeforeDelete,
-            onToggleCategory = onToggleCleanerCategory,
-            onToggleQuarantine = onToggleQuarantineBeforeDelete,
-            onRescanApp = onRescanAppCleaner,
-            onPickSafFolderForCleaner = onPickSafFolderForCleaner,
-            onExecuteClean = onExecuteAdvancedClean
-        )
     }
 
     item(key = "cleaner_app_cache") {
@@ -212,6 +219,57 @@ fun LazyListScope.storageCleanerItems(
                 }
             }
         }
+    }
+
+    item(key = "storage_file_navigator") {
+        FileNavigatorCard(
+            state = fileBrowserState,
+            onSelectRoot = onSelectBrowserRoot,
+            onSelectMountedSafRoot = onSelectMountedSafRoot,
+            onPickSafFolder = onPickBrowserSafFolder,
+            onNavigateBreadcrumb = onNavigateBreadcrumb,
+            onOpenFolder = onOpenBrowserFolder,
+            onPreviewFile = onPreviewBrowserFile,
+            onDeleteEntry = onDeleteBrowserEntry,
+            onChangeSort = onChangeBrowserSort,
+            onRefreshDirectory = onRefreshBrowserDirectory
+        )
+    }
+
+    item(key = "storage_deep_scan") {
+        UnifiedDeepScanCard(
+            scanState = deepScanState,
+            quarantineBeforeDelete = quarantineBeforeDelete,
+            onToggleQuarantine = onToggleQuarantineBeforeDelete,
+            onStartAppDeepScan = onStartAppDeepScan,
+            onPickSafFolderForDeepScan = onPickSafFolderForDeepScan,
+            onSelectFilter = onSelectDeepScanFilter,
+            onToggleFindingSelection = onToggleDeepFindingSelection,
+            onSelectAllFiltered = onSelectAllFilteredDeepFindings,
+            onInspectFinding = onInspectDeepFinding,
+            onDeleteSelected = onDeleteSelectedDeepFindings,
+            onResetScan = onResetDeepScan
+        )
+    }
+
+    item(key = "cleaner_report") {
+        CleanupReportCard(
+            report = cleanupReport,
+            onDismiss = onDismissCleanupReport
+        )
+    }
+
+    item(key = "cleaner_advanced") {
+        AdvancedCleanerCard(
+            scanResult = cleanerScanResult,
+            isScanning = isScanningCleaner,
+            quarantineBeforeDelete = quarantineBeforeDelete,
+            onToggleCategory = onToggleCleanerCategory,
+            onToggleQuarantine = onToggleQuarantineBeforeDelete,
+            onRescanApp = onRescanAppCleaner,
+            onPickSafFolderForCleaner = onPickSafFolderForCleaner,
+            onExecuteClean = onExecuteAdvancedClean
+        )
     }
 
     item(key = "cleaner_duplicates") {

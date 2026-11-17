@@ -132,7 +132,7 @@ fun LazyListScope.networkAndSystemAuditItems(
                     ) {
                         Icon(Icons.Filled.Refresh, contentDescription = null, modifier = Modifier.size(18.dp))
                         Spacer(modifier = Modifier.width(6.dp))
-                        Text("Re-Audit")
+                        Text("Scan")
                     }
                     OutlinedButton(
                         onClick = onOpenWirelessSettings,

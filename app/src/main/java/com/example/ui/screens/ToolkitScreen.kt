@@ -79,17 +79,26 @@ import com.example.diagnostics.formatBytes
 import com.example.model.BatteryHardwareSnapshot
 import com.example.model.BootImageInspectionState
 import com.example.model.BootableUsbCapability
+import com.example.model.BrowserEntry
 import com.example.model.CleanerCategoryType
 import com.example.model.CleanerDeepScanResult
 import com.example.model.CleanupReport
+import com.example.model.DeepFileScanState
+import com.example.model.DeepFindingCategory
+import com.example.model.DeepScanFinding
 import com.example.model.DisplayMetricsSnapshot
 import com.example.model.DuplicateScanState
+import com.example.model.FileBrowserUiState
+import com.example.model.FilePreviewState
+import com.example.model.FileSortOption
 import com.example.model.HardwareTestStatus
 import com.example.model.LiveSensorReading
+import com.example.model.MountedSafRoot
 import com.example.model.QuarantinedFile
 import com.example.model.RecoveryScanState
 import com.example.model.SensorDescriptor
 import com.example.model.SeverityLevel
+import com.example.model.StorageRootKind
 import com.example.model.StorageSummary
 import com.example.model.StorageVolumeDetail
 import com.example.model.SystemIntegrityInfo
@@ -97,6 +106,7 @@ import com.example.model.ToolkitCategory
 import com.example.model.WifiSecurityAudit
 import com.example.ui.components.DisplayDiagnosticDialog
 import com.example.ui.components.SeverityBadge
+import com.example.ui.components.toolkit.FilePreviewModal
 import com.example.ui.components.toolkit.fileRecoveryItems
 import com.example.ui.components.toolkit.hardwareDiagnosticsItems
 import com.example.ui.components.toolkit.networkAndSystemAuditItems
@@ -153,7 +163,28 @@ fun ToolkitScreen(
     bootableUsbCapability: BootableUsbCapability = BootableUsbCapability(),
     bootImageInspectionState: BootImageInspectionState = BootImageInspectionState.Idle,
     onInspectBootImage: (Uri) -> Unit = {},
-    onResetBootImageInspection: () -> Unit = {}
+    onResetBootImageInspection: () -> Unit = {},
+    fileBrowserState: FileBrowserUiState = FileBrowserUiState(),
+    deepScanState: DeepFileScanState = DeepFileScanState.Idle,
+    filePreviewState: FilePreviewState = FilePreviewState.Hidden,
+    onSelectBrowserRoot: (StorageRootKind) -> Unit = {},
+    onSelectMountedSafRoot: (MountedSafRoot) -> Unit = {},
+    onMountSafFolder: (Uri) -> Unit = {},
+    onNavigateBreadcrumb: (Int) -> Unit = {},
+    onOpenBrowserFolder: (BrowserEntry) -> Unit = {},
+    onPreviewBrowserFile: (BrowserEntry) -> Unit = {},
+    onDeleteBrowserEntry: (BrowserEntry) -> Unit = {},
+    onChangeBrowserSort: (FileSortOption) -> Unit = {},
+    onRefreshBrowserDirectory: () -> Unit = {},
+    onStartDeepFileScan: (Uri?) -> Unit = {},
+    onSelectDeepScanFilter: (DeepFindingCategory) -> Unit = {},
+    onToggleDeepFindingSelection: (String) -> Unit = {},
+    onSelectAllFilteredDeepFindings: (Boolean) -> Unit = {},
+    onInspectDeepFinding: (DeepScanFinding) -> Unit = {},
+    onDeleteSelectedDeepFindings: () -> Unit = {},
+    onResetDeepScan: () -> Unit = {},
+    onCloseFilePreview: () -> Unit = {},
+    onPreviewFileAction: (Boolean) -> Unit = {}
 ) {
     val context = LocalContext.current
     var showDisplayDialog by remember { mutableStateOf(false) }
@@ -176,7 +207,12 @@ fun ToolkitScreen(
 
     val browseVolumeLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocumentTree()
-    ) { _ -> }
+    ) { uri ->
+        if (uri != null) {
+            onMountSafFolder(uri)
+            onSelectCategory(ToolkitCategory.CLEANER)
+        }
+    }
 
     val duplicateFolderLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocumentTree()
@@ -185,6 +221,14 @@ fun ToolkitScreen(
     val cleanerSafPickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocumentTree()
     ) { uri -> if (uri != null) onRescanCleaner(uri) }
+
+    val browserSafPickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocumentTree()
+    ) { uri -> if (uri != null) onMountSafFolder(uri) }
+
+    val deepScanSafPickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocumentTree()
+    ) { uri -> if (uri != null) onStartDeepFileScan(uri) }
 
     val locationPermissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestMultiplePermissions()
@@ -251,6 +295,13 @@ fun ToolkitScreen(
         )
     }
 
+    FilePreviewModal(
+        state = filePreviewState,
+        onDismiss = onCloseFilePreview,
+        onQuarantineFile = { onPreviewFileAction(true) },
+        onDeleteFile = { onPreviewFileAction(false) }
+    )
+
     BoxWithConstraints(
         modifier = modifier
             .fillMaxSize()
@@ -286,6 +337,7 @@ fun ToolkitScreen(
                     },
                     onPickDuplicateFolder = { duplicateFolderLauncher.launch(null) },
                     onPickRecoveryFolder = { recoveryFolderLauncher.launch(null) },
+                    onStartDeepFileScan = { onStartDeepFileScan(null) },
                     modifier = Modifier
                         .weight(0.42f)
                         .fillMaxHeight()
@@ -364,6 +416,25 @@ fun ToolkitScreen(
                         restoreQuarantineLauncher.launch(file.originalName)
                     },
                     onPurgeQuarantinedFile = onPurgeQuarantinedFile,
+                    fileBrowserState = fileBrowserState,
+                    deepScanState = deepScanState,
+                    onSelectBrowserRoot = onSelectBrowserRoot,
+                    onSelectMountedSafRoot = onSelectMountedSafRoot,
+                    onPickBrowserSafFolder = { browserSafPickerLauncher.launch(null) },
+                    onNavigateBreadcrumb = onNavigateBreadcrumb,
+                    onOpenBrowserFolder = onOpenBrowserFolder,
+                    onPreviewBrowserFile = onPreviewBrowserFile,
+                    onDeleteBrowserEntry = onDeleteBrowserEntry,
+                    onChangeBrowserSort = onChangeBrowserSort,
+                    onRefreshBrowserDirectory = onRefreshBrowserDirectory,
+                    onStartAppDeepScan = { onStartDeepFileScan(null) },
+                    onPickSafFolderForDeepScan = { deepScanSafPickerLauncher.launch(null) },
+                    onSelectDeepScanFilter = onSelectDeepScanFilter,
+                    onToggleDeepFindingSelection = onToggleDeepFindingSelection,
+                    onSelectAllFilteredDeepFindings = onSelectAllFilteredDeepFindings,
+                    onInspectDeepFinding = onInspectDeepFinding,
+                    onDeleteSelectedDeepFindings = onDeleteSelectedDeepFindings,
+                    onResetDeepScan = onResetDeepScan,
                     modifier = Modifier
                         .weight(0.58f)
                         .fillMaxHeight()
@@ -391,6 +462,7 @@ fun ToolkitScreen(
                 },
                 onPickDuplicateFolder = { duplicateFolderLauncher.launch(null) },
                 onPickRecoveryFolder = { recoveryFolderLauncher.launch(null) },
+                onStartDeepFileScan = { onStartDeepFileScan(null) },
                 modifier = Modifier.fillMaxSize()
             )
         } else {
@@ -467,6 +539,25 @@ fun ToolkitScreen(
                     restoreQuarantineLauncher.launch(file.originalName)
                 },
                 onPurgeQuarantinedFile = onPurgeQuarantinedFile,
+                fileBrowserState = fileBrowserState,
+                deepScanState = deepScanState,
+                onSelectBrowserRoot = onSelectBrowserRoot,
+                onSelectMountedSafRoot = onSelectMountedSafRoot,
+                onPickBrowserSafFolder = { browserSafPickerLauncher.launch(null) },
+                onNavigateBreadcrumb = onNavigateBreadcrumb,
+                onOpenBrowserFolder = onOpenBrowserFolder,
+                onPreviewBrowserFile = onPreviewBrowserFile,
+                onDeleteBrowserEntry = onDeleteBrowserEntry,
+                onChangeBrowserSort = onChangeBrowserSort,
+                onRefreshBrowserDirectory = onRefreshBrowserDirectory,
+                onStartAppDeepScan = { onStartDeepFileScan(null) },
+                onPickSafFolderForDeepScan = { deepScanSafPickerLauncher.launch(null) },
+                onSelectDeepScanFilter = onSelectDeepScanFilter,
+                onToggleDeepFindingSelection = onToggleDeepFindingSelection,
+                onSelectAllFilteredDeepFindings = onSelectAllFilteredDeepFindings,
+                onInspectDeepFinding = onInspectDeepFinding,
+                onDeleteSelectedDeepFindings = onDeleteSelectedDeepFindings,
+                onResetDeepScan = onResetDeepScan,
                 modifier = Modifier.fillMaxSize()
             )
         }
@@ -491,6 +582,7 @@ private fun CategoryListPane(
     onOpenWirelessSettings: () -> Unit,
     onPickDuplicateFolder: () -> Unit,
     onPickRecoveryFolder: () -> Unit,
+    onStartDeepFileScan: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     var expandedCategoryId by rememberSaveable { mutableStateOf<String?>(null) }
@@ -558,7 +650,10 @@ private fun CategoryListPane(
                     when (category) {
                         ToolkitCategory.DIAGNOSTICS -> onRunBatteryTest()
                         ToolkitCategory.USB_TOOLS -> onRefreshToolkit()
-                        ToolkitCategory.CLEANER -> onPickDuplicateFolder()
+                        ToolkitCategory.CLEANER -> {
+                            onStartDeepFileScan()
+                            onSelectCategory(ToolkitCategory.CLEANER)
+                        }
                         ToolkitCategory.NETWORK_AUDIT -> onRefreshNetwork()
                         ToolkitCategory.RECOVERY -> onPickRecoveryFolder()
                     }
@@ -567,7 +662,7 @@ private fun CategoryListPane(
                     when (category) {
                         ToolkitCategory.DIAGNOSTICS -> onLaunchDisplayTest()
                         ToolkitCategory.USB_TOOLS -> onRefreshToolkit()
-                        ToolkitCategory.CLEANER -> onOpenStorageSettings()
+                        ToolkitCategory.CLEANER -> onSelectCategory(ToolkitCategory.CLEANER)
                         ToolkitCategory.NETWORK_AUDIT -> onOpenWirelessSettings()
                         ToolkitCategory.RECOVERY -> onPickRecoveryFolder()
                     }
@@ -594,8 +689,8 @@ private fun ExpandableToolkitCategoryCard(
     val (scanLabel, repairLabel) = when (category) {
         ToolkitCategory.DIAGNOSTICS -> "Run Test" to "Display Test"
         ToolkitCategory.USB_TOOLS -> "Scan USB" to "Probe OTG"
-        ToolkitCategory.CLEANER -> "Scan Dupes" to "OS Storage"
-        ToolkitCategory.NETWORK_AUDIT -> "Re-Audit" to "Net Settings"
+        ToolkitCategory.CLEANER -> "Deep Scan" to "Browse Files"
+        ToolkitCategory.NETWORK_AUDIT -> "Scan" to "Net Settings"
         ToolkitCategory.RECOVERY -> "Scan Folder" to "Vault"
     }
 
@@ -778,6 +873,25 @@ private fun CategoryDetailPane(
     onExportRecoverableFile: (Uri, String) -> Unit,
     onRestoreQuarantinedFile: (QuarantinedFile) -> Unit,
     onPurgeQuarantinedFile: (String) -> Unit,
+    fileBrowserState: FileBrowserUiState,
+    deepScanState: DeepFileScanState,
+    onSelectBrowserRoot: (StorageRootKind) -> Unit,
+    onSelectMountedSafRoot: (MountedSafRoot) -> Unit,
+    onPickBrowserSafFolder: () -> Unit,
+    onNavigateBreadcrumb: (Int) -> Unit,
+    onOpenBrowserFolder: (BrowserEntry) -> Unit,
+    onPreviewBrowserFile: (BrowserEntry) -> Unit,
+    onDeleteBrowserEntry: (BrowserEntry) -> Unit,
+    onChangeBrowserSort: (FileSortOption) -> Unit,
+    onRefreshBrowserDirectory: () -> Unit,
+    onStartAppDeepScan: () -> Unit,
+    onPickSafFolderForDeepScan: () -> Unit,
+    onSelectDeepScanFilter: (DeepFindingCategory) -> Unit,
+    onToggleDeepFindingSelection: (String) -> Unit,
+    onSelectAllFilteredDeepFindings: (Boolean) -> Unit,
+    onInspectDeepFinding: (DeepScanFinding) -> Unit,
+    onDeleteSelectedDeepFindings: () -> Unit,
+    onResetDeepScan: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     LazyColumn(
@@ -892,12 +1006,31 @@ private fun CategoryDetailPane(
             ToolkitCategory.CLEANER -> {
                 storageCleanerItems(
                     storage = storage,
+                    fileBrowserState = fileBrowserState,
+                    deepScanState = deepScanState,
                     duplicateState = duplicateState,
                     cleanupFeedback = cleanupFeedback,
                     cleanerScanResult = cleanerScanResult,
                     isScanningCleaner = isScanningCleaner,
                     cleanupReport = cleanupReport,
                     quarantineBeforeDelete = quarantineBeforeDelete,
+                    onSelectBrowserRoot = onSelectBrowserRoot,
+                    onSelectMountedSafRoot = onSelectMountedSafRoot,
+                    onPickBrowserSafFolder = onPickBrowserSafFolder,
+                    onNavigateBreadcrumb = onNavigateBreadcrumb,
+                    onOpenBrowserFolder = onOpenBrowserFolder,
+                    onPreviewBrowserFile = onPreviewBrowserFile,
+                    onDeleteBrowserEntry = onDeleteBrowserEntry,
+                    onChangeBrowserSort = onChangeBrowserSort,
+                    onRefreshBrowserDirectory = onRefreshBrowserDirectory,
+                    onStartAppDeepScan = onStartAppDeepScan,
+                    onPickSafFolderForDeepScan = onPickSafFolderForDeepScan,
+                    onSelectDeepScanFilter = onSelectDeepScanFilter,
+                    onToggleDeepFindingSelection = onToggleDeepFindingSelection,
+                    onSelectAllFilteredDeepFindings = onSelectAllFilteredDeepFindings,
+                    onInspectDeepFinding = onInspectDeepFinding,
+                    onDeleteSelectedDeepFindings = onDeleteSelectedDeepFindings,
+                    onResetDeepScan = onResetDeepScan,
                     onToggleCleanerCategory = onToggleCleanerCategory,
                     onToggleQuarantineBeforeDelete = onToggleQuarantineBeforeDelete,
                     onRescanAppCleaner = onRescanAppCleaner,

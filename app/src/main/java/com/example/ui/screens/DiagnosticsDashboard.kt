@@ -83,8 +83,8 @@ fun DiagnosticsDashboard(
     onOpenAudit: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
-    var telemetryExpanded by rememberSaveable { mutableStateOf(true) }
-    var graphsExpanded by rememberSaveable { mutableStateOf(true) }
+    var telemetryExpanded by rememberSaveable { mutableStateOf(false) }
+    var graphsExpanded by rememberSaveable { mutableStateOf(false) }
 
     val storageSeverity = when {
         storage.totalBytes <= 0L -> SeverityLevel.INFO
@@ -462,12 +462,19 @@ private fun StorageSummaryCard(
                 TelemetrySpecColumn(label = "Total", value = formatBytes(storage.totalBytes))
                 TelemetrySpecColumn(label = "App Cache", value = formatBytes(storage.totalAppCacheBytes))
                 if (onClick != null) {
-                    Icon(
-                        imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
-                        contentDescription = "Open storage cleaner",
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.size(20.dp)
-                    )
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            text = "Files",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                            contentDescription = "Open storage file navigator",
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
                 }
             }
         }

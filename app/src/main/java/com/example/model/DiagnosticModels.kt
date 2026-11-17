@@ -20,8 +20,8 @@ enum class ToolkitCategory(
         subtitle = "Attached USB OTG devices, bootable USB probe & .ISO/.IMG inspector"
     ),
     CLEANER(
-        title = "Storage Cleaner & Duplicates",
-        subtitle = "System/app cache, old logs, residual files & SHA-256 duplicate finder"
+        title = "Storage, Files & Deep Scan",
+        subtitle = "File browser, preview, malware/corrupt scan, cache & SHA-256 dupes"
     ),
     NETWORK_AUDIT(
         title = "Network & System Audit",
@@ -421,3 +421,140 @@ data class BatteryTrendPoint(
     val healthLabel: String,
     val sampleCount: Int
 )
+
+// --- File System Navigator & Preview Models ---
+
+enum class StorageRootKind(val label: String) {
+    APP_FILES("App Files"),
+    INTERNAL_CACHE("Internal Cache"),
+    EXTERNAL_CACHE("Ext Cache"),
+    QUARANTINE("Vault"),
+    SAF_FOLDER("Picked Folder")
+}
+
+enum class FileSortOption(val label: String) {
+    FOLDERS_FIRST_NAME("Name"),
+    SIZE_DESC("Size"),
+    MODIFIED_DESC("Newest")
+}
+
+data class StorageBreadcrumb(
+    val id: String,
+    val label: String,
+    val pathOrUri: String,
+    val isSaf: Boolean
+)
+
+data class BrowserEntry(
+    val id: String,
+    val name: String,
+    val pathOrUri: String,
+    val isDirectory: Boolean,
+    val sizeBytes: Long,
+    val lastModifiedMillis: Long,
+    val mimeType: String,
+    val isSafDocument: Boolean
+)
+
+data class MountedSafRoot(
+    val treeUriString: String,
+    val displayName: String
+)
+
+data class FileBrowserUiState(
+    val rootKind: StorageRootKind = StorageRootKind.APP_FILES,
+    val rootLabel: String = "App Files",
+    val breadcrumbs: List<StorageBreadcrumb> = emptyList(),
+    val entries: List<BrowserEntry> = emptyList(),
+    val sortOption: FileSortOption = FileSortOption.FOLDERS_FIRST_NAME,
+    val isLoading: Boolean = false,
+    val errorMessage: String? = null,
+    val mountedSafRoots: List<MountedSafRoot> = emptyList(),
+    val activeSafTreeUri: String? = null
+)
+
+// --- Unified Deep File Scan Models ---
+
+enum class DeepFindingCategory(val label: String) {
+    ALL("All"),
+    THREAT_SUSPICIOUS("Threats"),
+    CORRUPTED("Corrupted"),
+    DUPLICATE("Duplicates")
+}
+
+data class DeepScanFinding(
+    val id: String,
+    val name: String,
+    val pathOrUri: String,
+    val sizeBytes: Long,
+    val lastModifiedMillis: Long,
+    val mimeType: String,
+    val isSafDocument: Boolean,
+    val category: DeepFindingCategory,
+    val severity: SeverityLevel,
+    val verdictTitle: String,
+    val reasonDetail: String,
+    val sha256Short: String = "",
+    val groupHash: String? = null,
+    val isSuggestedKeep: Boolean = false,
+    val isSelectedForDelete: Boolean = false
+)
+
+sealed interface DeepFileScanState {
+    data object Idle : DeepFileScanState
+    data class Scanning(
+        val phase: String,
+        val filesScanned: Int,
+        val currentFileName: String
+    ) : DeepFileScanState
+
+    data class Results(
+        val scopeLabel: String,
+        val totalFilesScanned: Int,
+        val findings: List<DeepScanFinding>,
+        val selectedFilter: DeepFindingCategory = DeepFindingCategory.ALL,
+        val lastCleanupSummary: String? = null
+    ) : DeepFileScanState {
+        val threatCount: Int get() = findings.count { it.category == DeepFindingCategory.THREAT_SUSPICIOUS }
+        val corruptedCount: Int get() = findings.count { it.category == DeepFindingCategory.CORRUPTED }
+        val duplicateCount: Int get() = findings.count { it.category == DeepFindingCategory.DUPLICATE }
+        val filteredFindings: List<DeepScanFinding>
+            get() = if (selectedFilter == DeepFindingCategory.ALL) findings else findings.filter { it.category == selectedFilter }
+        val selectedDeleteCount: Int get() = findings.count { it.isSelectedForDelete }
+        val selectedDeleteBytes: Long get() = findings.filter { it.isSelectedForDelete }.sumOf { it.sizeBytes }
+    }
+
+    data class Error(val message: String) : DeepFileScanState
+}
+
+// --- File Preview Overlay Models ---
+
+sealed interface FilePreviewContent {
+    data class Text(val text: String, val truncated: Boolean) : FilePreviewContent
+    data class Image(val bitmap: androidx.compose.ui.graphics.ImageBitmap, val width: Int, val height: Int) : FilePreviewContent
+    data class HexBinary(val hexPreview: String) : FilePreviewContent
+    data class Empty(val message: String) : FilePreviewContent
+}
+
+sealed interface FilePreviewState {
+    data object Hidden : FilePreviewState
+    data class Loading(val name: String) : FilePreviewState
+    data class Ready(
+        val id: String,
+        val name: String,
+        val pathOrUri: String,
+        val sizeBytes: Long,
+        val lastModifiedMillis: Long,
+        val mimeType: String,
+        val isSafDocument: Boolean,
+        val detectedFormat: String,
+        val integritySeverity: SeverityLevel,
+        val integrityVerdict: String,
+        val integrityDetail: String,
+        val sha256Hex: String,
+        val content: FilePreviewContent
+    ) : FilePreviewState
+
+    data class Error(val name: String, val message: String) : FilePreviewState
+}
+

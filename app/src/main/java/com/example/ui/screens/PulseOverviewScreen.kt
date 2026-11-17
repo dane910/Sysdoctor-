@@ -358,8 +358,8 @@ fun PulseOverviewScreen(
                             horizontalArrangement = Arrangement.spacedBy(10.dp)
                         ) {
                             QuickCategoryTile(
-                                title = "Cleaner",
-                                subtitle = "Cache & SHA-256 dupes",
+                                title = "Storage & Files",
+                                subtitle = "File browser, deep scan & dupes",
                                 icon = Icons.Filled.CleaningServices,
                                 accent = MaterialTheme.colorScheme.tertiary,
                                 tag = "quick_cleaner_card",

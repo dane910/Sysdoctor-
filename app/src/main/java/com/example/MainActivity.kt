@@ -142,6 +142,9 @@ fun SysPulseAppShell(
     val bootableUsbCapability by viewModel.bootableUsbCapability.collectAsStateWithLifecycle()
     val bootImageInspectionState by viewModel.bootImageInspectionState.collectAsStateWithLifecycle()
     val toolkitFeedback by viewModel.toolkitFeedback.collectAsStateWithLifecycle()
+    val fileBrowserState by viewModel.fileBrowserState.collectAsStateWithLifecycle()
+    val deepScanState by viewModel.deepScanState.collectAsStateWithLifecycle()
+    val filePreviewState by viewModel.filePreviewState.collectAsStateWithLifecycle()
 
     val navigateTo: (SysPulseDestination) -> Unit = { dest ->
         if (dest == SysPulseDestination.Toolkit &&
@@ -346,7 +349,48 @@ fun SysPulseAppShell(
                                     bootableUsbCapability = bootableUsbCapability,
                                     bootImageInspectionState = bootImageInspectionState,
                                     onInspectBootImage = viewModel::inspectBootImage,
-                                    onResetBootImageInspection = viewModel::resetBootImageInspection
+                                    onResetBootImageInspection = viewModel::resetBootImageInspection,
+                                    fileBrowserState = fileBrowserState,
+                                    deepScanState = deepScanState,
+                                    filePreviewState = filePreviewState,
+                                    onSelectBrowserRoot = viewModel::selectBrowserRoot,
+                                    onSelectMountedSafRoot = viewModel::selectMountedSafRoot,
+                                    onMountSafFolder = viewModel::mountSafFolder,
+                                    onNavigateBreadcrumb = viewModel::navigateBreadcrumb,
+                                    onOpenBrowserFolder = viewModel::openBrowserFolder,
+                                    onPreviewBrowserFile = { entry ->
+                                        viewModel.openFilePreview(
+                                            id = entry.id,
+                                            name = entry.name,
+                                            pathOrUri = entry.pathOrUri,
+                                            sizeBytes = entry.sizeBytes,
+                                            lastModifiedMillis = entry.lastModifiedMillis,
+                                            mimeType = entry.mimeType,
+                                            isSafDocument = entry.isSafDocument
+                                        )
+                                    },
+                                    onDeleteBrowserEntry = viewModel::deleteBrowserEntry,
+                                    onChangeBrowserSort = viewModel::changeBrowserSort,
+                                    onRefreshBrowserDirectory = viewModel::refreshCurrentBrowserDirectory,
+                                    onStartDeepFileScan = viewModel::startDeepFileScan,
+                                    onSelectDeepScanFilter = viewModel::setDeepScanFilter,
+                                    onToggleDeepFindingSelection = viewModel::toggleDeepFindingSelection,
+                                    onSelectAllFilteredDeepFindings = viewModel::selectAllFilteredDeepFindings,
+                                    onInspectDeepFinding = { finding ->
+                                        viewModel.openFilePreview(
+                                            id = finding.id,
+                                            name = finding.name,
+                                            pathOrUri = finding.pathOrUri,
+                                            sizeBytes = finding.sizeBytes,
+                                            lastModifiedMillis = finding.lastModifiedMillis,
+                                            mimeType = finding.mimeType,
+                                            isSafDocument = finding.isSafDocument
+                                        )
+                                    },
+                                    onDeleteSelectedDeepFindings = { viewModel.deleteSelectedDeepFindings() },
+                                    onResetDeepScan = viewModel::resetDeepFileScan,
+                                    onCloseFilePreview = viewModel::closeFilePreview,
+                                    onPreviewFileAction = viewModel::handlePreviewFileAction
                                 )
                             }
                         }

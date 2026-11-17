@@ -247,6 +247,31 @@ class AdvancedCleanerRepository(private val context: Context) {
         }
     }
 
+    suspend fun quarantineAndDeleteTarget(
+        pathOrUri: String,
+        name: String,
+        categoryLabel: String,
+        sizeBytes: Long,
+        isSafDocument: Boolean,
+        quarantineEnabled: Boolean
+    ): Pair<Boolean, Boolean> = withContext(Dispatchers.IO) {
+        var wasQuarantined = false
+        val deleted = if (isSafDocument) {
+            val uri = Uri.parse(pathOrUri)
+            if (quarantineEnabled && sizeBytes in 1L..MAX_QUARANTINE_BYTES) {
+                wasQuarantined = copyUriToQuarantine(uri, name, categoryLabel, sizeBytes)
+            }
+            runCatching { DocumentsContract.deleteDocument(context.contentResolver, uri) }.getOrDefault(false)
+        } else {
+            val file = File(pathOrUri)
+            if (quarantineEnabled && file.exists() && file.isFile && sizeBytes in 1L..MAX_QUARANTINE_BYTES) {
+                wasQuarantined = copyFileToQuarantine(file, name, categoryLabel)
+            }
+            runCatching { file.exists() && file.delete() }.getOrDefault(false)
+        }
+        deleted to wasQuarantined
+    }
+
     private fun scanSafFolderForJunk(
         treeUri: Uri,
         rootDocId: String,

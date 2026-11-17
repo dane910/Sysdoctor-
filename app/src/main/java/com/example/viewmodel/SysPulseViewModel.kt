@@ -10,6 +10,7 @@ import com.example.data.SysDoctorDatabase
 import com.example.diagnostics.AdvancedCleanerRepository
 import com.example.diagnostics.ArchitectureGuides
 import com.example.diagnostics.DeviceDiagnosticsRepository
+import com.example.diagnostics.FileBrowserRepository
 import com.example.diagnostics.HardwareToolkitRepository
 import com.example.diagnostics.formatBytes
 import com.example.model.AdvisorUiState
@@ -19,16 +20,26 @@ import com.example.model.BatteryTrendMetric
 import com.example.model.BatteryTrendPoint
 import com.example.model.BootImageInspectionState
 import com.example.model.BootableUsbCapability
+import com.example.model.BrowserEntry
 import com.example.model.CleanerCategoryType
 import com.example.model.CleanerDeepScanResult
 import com.example.model.CleanupReport
+import com.example.model.DeepFileScanState
+import com.example.model.DeepFindingCategory
+import com.example.model.DeepScanFinding
 import com.example.model.DisplayMetricsSnapshot
 import com.example.model.DuplicateScanState
+import com.example.model.FileBrowserUiState
+import com.example.model.FilePreviewState
+import com.example.model.FileSortOption
 import com.example.model.HardwareTestStatus
 import com.example.model.LiveSensorReading
+import com.example.model.MountedSafRoot
 import com.example.model.QuarantinedFile
 import com.example.model.RecoveryScanState
 import com.example.model.SensorDescriptor
+import com.example.model.StorageBreadcrumb
+import com.example.model.StorageRootKind
 import com.example.model.StorageSummary
 import com.example.model.StorageVolumeDetail
 import com.example.model.SystemIntegrityInfo
@@ -54,6 +65,7 @@ class SysPulseViewModel(application: Application) : AndroidViewModel(application
     private val repository = DeviceDiagnosticsRepository(application.applicationContext)
     private val cleanerRepository = AdvancedCleanerRepository(application.applicationContext)
     private val toolkitRepository = HardwareToolkitRepository(application.applicationContext)
+    private val fileBrowserRepository = FileBrowserRepository(application.applicationContext)
     private val batteryHistoryRepository = BatteryHistoryRepository(
         SysDoctorDatabase.getInstance(application.applicationContext).batteryTelemetryDao()
     )
@@ -138,12 +150,23 @@ class SysPulseViewModel(application: Application) : AndroidViewModel(application
     private val _toolkitFeedback = MutableStateFlow<String?>(null)
     val toolkitFeedback: StateFlow<String?> = _toolkitFeedback.asStateFlow()
 
+    // File Navigator, Unified Deep Scan & File Preview State
+    private val _fileBrowserState = MutableStateFlow(FileBrowserUiState())
+    val fileBrowserState: StateFlow<FileBrowserUiState> = _fileBrowserState.asStateFlow()
+
+    private val _deepScanState = MutableStateFlow<DeepFileScanState>(DeepFileScanState.Idle)
+    val deepScanState: StateFlow<DeepFileScanState> = _deepScanState.asStateFlow()
+
+    private val _filePreviewState = MutableStateFlow<FilePreviewState>(FilePreviewState.Hidden)
+    val filePreviewState: StateFlow<FilePreviewState> = _filePreviewState.asStateFlow()
+
     val ttsState: StateFlow<TtsPlaybackState> = audioService.ttsState
     val selectedVoice: StateFlow<TtsVoiceOption> = audioService.selectedVoice
     val advisorState: StateFlow<AdvisorUiState> = audioService.advisorState
     val architectureTopics: List<ArchitectureTopic> = ArchitectureGuides.topics
 
     private var scanJob: Job? = null
+    private var deepScanJob: Job? = null
     private var sensorJob: Job? = null
     private var recoveryJob: Job? = null
     private var bootImageJob: Job? = null
@@ -152,6 +175,7 @@ class SysPulseViewModel(application: Application) : AndroidViewModel(application
         refreshAllDiagnostics()
         runCleanerDeepScan(null)
         refreshToolkitData()
+        selectBrowserRoot(StorageRootKind.APP_FILES)
     }
 
     fun toggleTheme() {
@@ -368,6 +392,326 @@ class SysPulseViewModel(application: Application) : AndroidViewModel(application
     fun resetDuplicateScan() {
         scanJob?.cancel()
         _duplicateState.value = DuplicateScanState.Idle
+    }
+
+    // --- Scoped + SAF File System Navigator ---
+    fun selectBrowserRoot(kind: StorageRootKind) {
+        if (kind == StorageRootKind.SAF_FOLDER) {
+            val existingTree = _fileBrowserState.value.activeSafTreeUri
+                ?: _fileBrowserState.value.mountedSafRoots.firstOrNull()?.treeUriString
+            if (existingTree != null) {
+                openSafRoot(Uri.parse(existingTree))
+            }
+            return
+        }
+        val crumbs = fileBrowserRepository.initialBreadcrumbsForLocal(kind)
+        _fileBrowserState.value = _fileBrowserState.value.copy(
+            rootKind = kind,
+            rootLabel = kind.label,
+            breadcrumbs = crumbs,
+            isLoading = true,
+            errorMessage = null
+        )
+        loadCurrentBreadcrumbEntries()
+    }
+
+    fun mountSafFolder(treeUri: Uri) {
+        runCatching {
+            val flags = android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION or
+                android.content.Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+            getApplication<Application>().contentResolver.takePersistableUriPermission(treeUri, flags)
+        }
+        openSafRoot(treeUri)
+    }
+
+    private fun openSafRoot(treeUri: Uri) {
+        val display = fileBrowserRepository.getSafDisplayName(treeUri)
+        val uriString = treeUri.toString()
+        val existingRoots = _fileBrowserState.value.mountedSafRoots
+            .filterNot { it.treeUriString == uriString } + MountedSafRoot(uriString, display)
+        val crumbs = fileBrowserRepository.initialBreadcrumbsForSaf(treeUri)
+        _fileBrowserState.value = _fileBrowserState.value.copy(
+            rootKind = StorageRootKind.SAF_FOLDER,
+            rootLabel = display,
+            breadcrumbs = crumbs,
+            mountedSafRoots = existingRoots,
+            activeSafTreeUri = uriString,
+            isLoading = true,
+            errorMessage = null
+        )
+        loadCurrentBreadcrumbEntries()
+    }
+
+    fun selectMountedSafRoot(root: MountedSafRoot) {
+        openSafRoot(Uri.parse(root.treeUriString))
+    }
+
+    fun openBrowserFolder(entry: BrowserEntry) {
+        if (!entry.isDirectory) return
+        val newCrumb = if (entry.isSafDocument) {
+            val docId = android.provider.DocumentsContract.getDocumentId(Uri.parse(entry.pathOrUri))
+            StorageBreadcrumb(
+                id = docId,
+                label = entry.name,
+                pathOrUri = entry.pathOrUri,
+                isSaf = true
+            )
+        } else {
+            StorageBreadcrumb(
+                id = entry.pathOrUri,
+                label = entry.name,
+                pathOrUri = entry.pathOrUri,
+                isSaf = false
+            )
+        }
+        _fileBrowserState.value = _fileBrowserState.value.copy(
+            breadcrumbs = _fileBrowserState.value.breadcrumbs + newCrumb,
+            isLoading = true,
+            errorMessage = null
+        )
+        loadCurrentBreadcrumbEntries()
+    }
+
+    fun navigateBreadcrumb(index: Int) {
+        val crumbs = _fileBrowserState.value.breadcrumbs
+        if (index !in crumbs.indices) return
+        _fileBrowserState.value = _fileBrowserState.value.copy(
+            breadcrumbs = crumbs.take(index + 1),
+            isLoading = true,
+            errorMessage = null
+        )
+        loadCurrentBreadcrumbEntries()
+    }
+
+    fun changeBrowserSort(sortOption: FileSortOption) {
+        val current = _fileBrowserState.value
+        _fileBrowserState.value = current.copy(
+            sortOption = sortOption,
+            entries = fileBrowserRepository.sortEntries(current.entries, sortOption)
+        )
+    }
+
+    fun refreshCurrentBrowserDirectory() {
+        _fileBrowserState.value = _fileBrowserState.value.copy(isLoading = true, errorMessage = null)
+        loadCurrentBreadcrumbEntries()
+    }
+
+    private fun loadCurrentBreadcrumbEntries() {
+        val state = _fileBrowserState.value
+        val activeCrumb = state.breadcrumbs.lastOrNull()
+        viewModelScope.launch {
+            if (activeCrumb == null) {
+                _fileBrowserState.value = _fileBrowserState.value.copy(entries = emptyList(), isLoading = false)
+                return@launch
+            }
+            val result = runCatching {
+                if (activeCrumb.isSaf) {
+                    val treeStr = state.activeSafTreeUri ?: activeCrumb.pathOrUri
+                    fileBrowserRepository.listSafDirectory(
+                        treeUri = Uri.parse(treeStr),
+                        parentDocumentId = activeCrumb.id,
+                        sortOption = state.sortOption
+                    )
+                } else {
+                    fileBrowserRepository.listLocalDirectory(
+                        dir = java.io.File(activeCrumb.pathOrUri),
+                        sortOption = state.sortOption
+                    )
+                }
+            }
+            _fileBrowserState.value = result.fold(
+                onSuccess = { entries ->
+                    _fileBrowserState.value.copy(entries = entries, isLoading = false, errorMessage = null)
+                },
+                onFailure = { err ->
+                    _fileBrowserState.value.copy(
+                        entries = emptyList(),
+                        isLoading = false,
+                        errorMessage = err.localizedMessage ?: "Unable to open folder."
+                    )
+                }
+            )
+        }
+    }
+
+    fun deleteBrowserEntry(entry: BrowserEntry) {
+        viewModelScope.launch {
+            val ok = fileBrowserRepository.deleteTarget(entry.pathOrUri, entry.isSafDocument)
+            if (ok) {
+                _cleanupFeedback.value = "Deleted '${entry.name}' (${formatBytes(entry.sizeBytes)})."
+                _storageSummary.value = repository.getStorageSummary()
+                _cleanerScanResult.value = cleanerRepository.scanForCleanableItems(null)
+                loadCurrentBreadcrumbEntries()
+            } else {
+                _cleanupFeedback.value = "Could not delete '${entry.name}'."
+            }
+        }
+    }
+
+    // --- Unified Deep File Scan (Malware / Corrupted / Duplicates) ---
+    fun startDeepFileScan(safTreeUri: Uri? = null) {
+        deepScanJob?.cancel()
+        if (safTreeUri != null) {
+            runCatching {
+                val flags = android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION or
+                    android.content.Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+                getApplication<Application>().contentResolver.takePersistableUriPermission(safTreeUri, flags)
+            }
+        }
+        deepScanJob = viewModelScope.launch {
+            _deepScanState.value = DeepFileScanState.Scanning("Initializing deep scanner…", 0, "Storage")
+            fileBrowserRepository.runDeepFileScan(safTreeUri)
+                .catch { e ->
+                    _deepScanState.value = DeepFileScanState.Error(
+                        e.localizedMessage ?: "Deep file scan encountered an error."
+                    )
+                }
+                .collect { state ->
+                    _deepScanState.value = state
+                }
+        }
+    }
+
+    fun setDeepScanFilter(category: DeepFindingCategory) {
+        val current = _deepScanState.value as? DeepFileScanState.Results ?: return
+        _deepScanState.value = current.copy(selectedFilter = category)
+    }
+
+    fun toggleDeepFindingSelection(findingId: String) {
+        val current = _deepScanState.value as? DeepFileScanState.Results ?: return
+        _deepScanState.value = current.copy(
+            findings = current.findings.map { item ->
+                if (item.id == findingId) item.copy(isSelectedForDelete = !item.isSelectedForDelete) else item
+            }
+        )
+    }
+
+    fun selectAllFilteredDeepFindings(select: Boolean) {
+        val current = _deepScanState.value as? DeepFileScanState.Results ?: return
+        val visibleIds = current.filteredFindings.map { it.id }.toSet()
+        _deepScanState.value = current.copy(
+            findings = current.findings.map { item ->
+                if (item.id in visibleIds && !(select && item.isSuggestedKeep)) {
+                    item.copy(isSelectedForDelete = select)
+                } else {
+                    item
+                }
+            }
+        )
+    }
+
+    fun deleteSelectedDeepFindings(quarantine: Boolean = _quarantineBeforeDelete.value) {
+        val current = _deepScanState.value as? DeepFileScanState.Results ?: return
+        val selected = current.findings.filter { it.isSelectedForDelete }
+        if (selected.isEmpty()) return
+
+        viewModelScope.launch {
+            var deletedCount = 0
+            var quarantinedCount = 0
+            var freedBytes = 0L
+            val removedIds = mutableSetOf<String>()
+
+            for (item in selected) {
+                val (deleted, qAdded) = cleanerRepository.quarantineAndDeleteTarget(
+                    pathOrUri = item.pathOrUri,
+                    name = item.name,
+                    categoryLabel = item.category.label,
+                    sizeBytes = item.sizeBytes,
+                    isSafDocument = item.isSafDocument,
+                    quarantineEnabled = quarantine
+                )
+                if (deleted) {
+                    deletedCount++
+                    freedBytes += item.sizeBytes
+                    removedIds.add(item.id)
+                }
+                if (qAdded) quarantinedCount++
+            }
+
+            val remaining = current.findings.filterNot { it.id in removedIds }
+            val summary = if (quarantinedCount > 0) {
+                "Removed $deletedCount file(s) (${formatBytes(freedBytes)}); $quarantinedCount backed up to Quarantine Vault."
+            } else {
+                "Deleted $deletedCount file(s), reclaiming ${formatBytes(freedBytes)}."
+            }
+            _deepScanState.value = current.copy(
+                findings = remaining,
+                lastCleanupSummary = summary
+            )
+            _quarantineFiles.value = cleanerRepository.listQuarantinedFiles()
+            _storageSummary.value = repository.getStorageSummary()
+            _cleanerScanResult.value = cleanerRepository.scanForCleanableItems(null)
+            _cleanupFeedback.value = summary
+            loadCurrentBreadcrumbEntries()
+        }
+    }
+
+    fun resetDeepFileScan() {
+        deepScanJob?.cancel()
+        _deepScanState.value = DeepFileScanState.Idle
+    }
+
+    // --- File Preview & Integrity Modal ---
+    fun openFilePreview(
+        id: String,
+        name: String,
+        pathOrUri: String,
+        sizeBytes: Long,
+        lastModifiedMillis: Long,
+        mimeType: String,
+        isSafDocument: Boolean
+    ) {
+        _filePreviewState.value = FilePreviewState.Loading(name)
+        viewModelScope.launch {
+            _filePreviewState.value = fileBrowserRepository.inspectFileForPreview(
+                id = id,
+                name = name,
+                pathOrUri = pathOrUri,
+                sizeBytes = sizeBytes,
+                lastModifiedMillis = lastModifiedMillis,
+                mimeType = mimeType,
+                isSafDocument = isSafDocument
+            )
+        }
+    }
+
+    fun closeFilePreview() {
+        _filePreviewState.value = FilePreviewState.Hidden
+    }
+
+    fun handlePreviewFileAction(quarantine: Boolean) {
+        val ready = _filePreviewState.value as? FilePreviewState.Ready ?: return
+        viewModelScope.launch {
+            val (deleted, quarantined) = cleanerRepository.quarantineAndDeleteTarget(
+                pathOrUri = ready.pathOrUri,
+                name = ready.name,
+                categoryLabel = if (quarantine) "Quarantined Preview" else "Manual Cleanup",
+                sizeBytes = ready.sizeBytes,
+                isSafDocument = ready.isSafDocument,
+                quarantineEnabled = quarantine
+            )
+            _filePreviewState.value = FilePreviewState.Hidden
+            if (deleted) {
+                val msg = if (quarantined) {
+                    "Moved '${ready.name}' to Quarantine Vault & removed original."
+                } else {
+                    "Deleted '${ready.name}' (${formatBytes(ready.sizeBytes)})."
+                }
+                _cleanupFeedback.value = msg
+                val currentDeep = _deepScanState.value as? DeepFileScanState.Results
+                if (currentDeep != null) {
+                    _deepScanState.value = currentDeep.copy(
+                        findings = currentDeep.findings.filterNot { it.pathOrUri == ready.pathOrUri }
+                    )
+                }
+                _quarantineFiles.value = cleanerRepository.listQuarantinedFiles()
+                _storageSummary.value = repository.getStorageSummary()
+                _cleanerScanResult.value = cleanerRepository.scanForCleanableItems(null)
+                loadCurrentBreadcrumbEntries()
+            } else {
+                _cleanupFeedback.value = "Could not delete '${ready.name}'."
+            }
+        }
     }
 
     // --- Hardware, File Recovery & Partition Toolkit ---
